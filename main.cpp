@@ -440,7 +440,7 @@ int check_Hit_Collision(Entity_Instance* def, const Entity_Instance atk, float a
 	}
 	else if (atk.direction == DOWN)
 	{
-		if (def->y < atk.y + atk_buffer && def->y + 1.0f > atk.y &&
+		if (def->y < atk.y + 1.0f + atk_buffer && def->y + 1.0f > atk.y + 1.0f &&
 			def->x < atk.x + 1.0f && def->x + 1.0f > atk.x)
 		{
 			--def->curr_hp;
@@ -1014,7 +1014,7 @@ int main(int argc, char** argv)
 					{
 						camera.y = 0.0f;
 						for (int i = 0; i < 5; i++) locale[i] -= dungeon_map.map_w;
-						p1.y = (float)dungeon_map.room_h - 2.0f;
+						p1.y = (float)dungeon_map.room_h - 3.0f;
 						direction = MID;
 					}
 				}
@@ -1031,7 +1031,7 @@ int main(int argc, char** argv)
 					{
 						camera.y = 0.0;
 						for (int i = 0; i < 5; i++) locale[i] += dungeon_map.map_w;
-						p1.y = 1.0;
+						p1.y = 2.0f;
 						direction = MID;
 					}
 				}
@@ -1048,7 +1048,7 @@ int main(int argc, char** argv)
 					{
 						camera.x = 0.0f;
 						for (int i = 0; i < 5; i++) locale[i] -= 1;
-						p1.x = dungeon_map.room_w - 2.0f;
+						p1.x = dungeon_map.room_w - 3.0f;
 						direction = MID;
 					}
 				}
@@ -1065,7 +1065,7 @@ int main(int argc, char** argv)
 					{
 						camera.x = 0.0f;
 						for (int i = 0; i < 5; i++) locale[i] += 1;
-						p1.x = 1.0f;
+						p1.x = 2.0f;
 						direction = MID;
 					}
 				}
