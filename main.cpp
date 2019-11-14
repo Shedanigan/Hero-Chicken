@@ -10,6 +10,8 @@
 #pragma comment(lib, "SDL2-2.0.9\\lib\\x86\\SDL2main.lib")
 #include "SDL2-2.0.9/include/SDL_image.h"
 #pragma comment (lib, "SDL2-2.0.9\\lib\\x86\\SDL2_image.lib")
+#include "SDL2-2.0.9/include/SDL_mixer.h"
+#pragma comment (lib, "SDL2-2.0.9\\lib\\x86\\SDL2_mixer.lib")
 #pragma warning(disable:4996)
 
 void load_Image_To_Texture(SDL_Texture** dest, SDL_Renderer* renderer, const char* src)
@@ -371,11 +373,20 @@ struct Entity_Key
 		atk_start[3], atk_end[3], atk_rate[3],
 		dmg_start[3], dmg_end[3], dmg_rate[3],
 		death_start[3], death_end[3], death_rate[3];
+	Mix_Chunk* move_s;
+	Mix_Chunk* atk_s;
+	Mix_Chunk* dmg_s;
+	Mix_Chunk* dth_s;
 };
 
-void load_Entity_Key(Entity_Key* entity, const char* eds_path, Sheet* sheet)
+void load_Entity_Key(Entity_Key* entity, const char* eds_path, Sheet* sheet, const char* move_sfx, const char* atk_sfx, const char* dmg_sfx, const char* dth_sfx)
 {
 	entity->spritesheet = sheet;
+
+	if (move_sfx != NULL) entity->move_s = Mix_LoadWAV(move_sfx);
+	if (atk_sfx != NULL) entity->atk_s = Mix_LoadWAV(atk_sfx);
+	if (dmg_sfx != NULL) entity->dmg_s = Mix_LoadWAV(dmg_sfx);
+	if (dth_sfx != NULL) entity->dth_s = Mix_LoadWAV(dth_sfx);
 
 	FILE* f_in = fopen(eds_path, "r");
 	fscanf(f_in, "Idle Frame: %d-%d-%d\n", &entity->idle_frame[0], &entity->idle_frame[1], &entity->idle_frame[2]);
@@ -699,7 +710,11 @@ void move_To_Position(Entity_Instance* e, int* wall_col, int* floor_col, int roo
 	//move once direction known
 	e->state = WALK;
 	e->direction = direction;
-	if (n_steps <= 1) e->state = ATTACK;
+	if (n_steps <= 1)
+	{
+		Mix_PlayChannel(-1, e->key->atk_s, 0);
+		e->state = ATTACK;
+	}
 	else if (direction == LEFT)
 	{
 		if ((float)ey != e->y && (wall_col[(ey+1) * room_w + ex - 1] >= 0 || floor_col[(ey+1) * room_w + ex - 1] >= 0))
@@ -735,10 +750,15 @@ int check_Hit_Collision(Entity_Instance* def, const Entity_Instance atk, float a
 			def->direction = RIGHT;
 			if (def->curr_hp <= 0)
 			{
+				Mix_PlayChannel(-1, def->key->dth_s, 0);
 				def->state = DYING;
 				return 2;
 			}
-			else def->state = DAMAGE;
+			else
+			{
+				Mix_PlayChannel(-1, def->key->dmg_s, 0);
+				def->state = DAMAGE;
+			}
 			return 1;
 		}
 	}
@@ -751,10 +771,15 @@ int check_Hit_Collision(Entity_Instance* def, const Entity_Instance atk, float a
 			def->direction = LEFT;
 			if (def->curr_hp <= 0)
 			{
+				Mix_PlayChannel(-1, def->key->dth_s, 0);
 				def->state = DYING;
 				return 2;
 			}
-			else def->state = DAMAGE;
+			else
+			{
+				Mix_PlayChannel(-1, def->key->dmg_s, 0);
+				def->state = DAMAGE;
+			}
 			return 1;
 		}
 	}
@@ -767,10 +792,15 @@ int check_Hit_Collision(Entity_Instance* def, const Entity_Instance atk, float a
 			def->direction = UP;
 			if (def->curr_hp <= 0)
 			{
+				Mix_PlayChannel(-1, def->key->dth_s, 0);
 				def->state = DYING;
 				return 2;
 			}
-			else def->state = DAMAGE;
+			else
+			{
+				Mix_PlayChannel(-1, def->key->dmg_s, 0);
+				def->state = DAMAGE;
+			}
 			return 1;
 		}
 	}
@@ -783,10 +813,15 @@ int check_Hit_Collision(Entity_Instance* def, const Entity_Instance atk, float a
 			def->direction = DOWN;
 			if (def->curr_hp <= 0)
 			{
+				Mix_PlayChannel(-1, def->key->dth_s, 0);
 				def->state = DYING;
 				return 2;
 			}
-			else def->state = DAMAGE;
+			else
+			{
+				Mix_PlayChannel(-1, def->key->dmg_s, 0);
+				def->state = DAMAGE;
+			}
 			return 1;
 		}
 	}
@@ -798,6 +833,7 @@ void check_Tile_Collision(int* wall_c, int* floor_c, int room_w, Entity_Instance
 	int ix = (int)e->x;
 	int iy = (int)e->y;
 
+	//top left
 	if ((wall_c[iy*room_w + ix] == 1 || (n_enemies > 0 && wall_c[iy*room_w+ix] >= 0)) || floor_c[iy*room_w + ix] >= 0)
 	{
 		float dif1 = e->x - (float)ix;
@@ -809,6 +845,7 @@ void check_Tile_Collision(int* wall_c, int* floor_c, int room_w, Entity_Instance
 	}
 	if ((float)ix != e->x)
 	{
+		//top right
 		if ((wall_c[iy*room_w + ix + 1] == 1 || (n_enemies > 0 && wall_c[iy*room_w + ix + 1] >= 0)) || floor_c[iy*room_w + ix + 1] >= 0)
 		{
 			float dif1 = (float)(ix + 1) - e->x;
@@ -820,25 +857,30 @@ void check_Tile_Collision(int* wall_c, int* floor_c, int room_w, Entity_Instance
 		}
 	}
 
-	if ((wall_c[(iy + 1) * room_w + ix] == 1 || (n_enemies > 0 && wall_c[(iy + 1) * room_w + ix] >= 0)) || floor_c[(iy + 1) * room_w + ix] >= 0)
+	if ((float)iy != e->y)
 	{
-		float dif1 = e->x - (float)ix;
-		float dif2 = (float)(iy + 1) - e->y;
-		if (dif1 > dif2) e->x = (float)(ix + 1);
-		else e->y = (float)iy;
-		ix = (int)e->x;
-		iy = (int)e->y;
-	}
-	if ((float)ix != e->x)
-	{
-		if ((wall_c[(iy + 1) * room_w + ix + 1] == 1 || (n_enemies > 0 && wall_c[(iy + 1) * room_w + ix + 1] >= 0)) || floor_c[(iy + 1) * room_w + ix + 1] >= 0)
+		//bottom left
+		if ((wall_c[(iy + 1) * room_w + ix] == 1 || (n_enemies > 0 && wall_c[(iy + 1) * room_w + ix] >= 0)) || floor_c[(iy + 1) * room_w + ix] >= 0)
 		{
-			float dif1 = (float)(ix + 1) - e->x;
+			float dif1 = e->x - (float)ix;
 			float dif2 = (float)(iy + 1) - e->y;
-			if (dif1 > dif2) e->x = (float)ix;
+			if (dif1 > dif2) e->x = (float)(ix + 1);
 			else e->y = (float)iy;
 			ix = (int)e->x;
 			iy = (int)e->y;
+		}
+		if ((float)ix != e->x)
+		{
+			//bottom right
+			if ((wall_c[(iy + 1) * room_w + ix + 1] == 1 || (n_enemies > 0 && wall_c[(iy + 1) * room_w + ix + 1] >= 0)) || floor_c[(iy + 1) * room_w + ix + 1] >= 0)
+			{
+				float dif1 = (float)(ix + 1) - e->x;
+				float dif2 = (float)(iy + 1) - e->y;
+				if (dif1 > dif2) e->x = (float)ix;
+				else e->y = (float)iy;
+				ix = (int)e->x;
+				iy = (int)e->y;
+			}
 		}
 	}
 }
@@ -1096,22 +1138,22 @@ void draw_Entity_Collision(SDL_Renderer* renderer, SDL_Texture* green, SDL_Textu
 	{
 		if (e.direction == LEFT)
 		{
-			dest.w *= atk_range;
+			dest.w = (int)((float)dest.w * atk_range);
 			dest.x -= dest.w;
 		}
 		else if (e.direction == RIGHT)
 		{
+			dest.w = (int)((float)dest.w * atk_range);
 			dest.x += dest.w;
-			dest.w *= atk_range;
 		}
 		else if (e.direction == DOWN)
 		{
+			dest.h = (int)((float)dest.h * atk_range);
 			dest.y += dest.h;
-			dest.h *= atk_range;
 		}
 		else if (e.direction == UP)
 		{
-			dest.h *= atk_range;
+			dest.h = (int)((float)dest.h * atk_range);
 			dest.y -= dest.h;
 		}
 		SDL_RenderCopy(renderer, red, &src, &dest);
@@ -1123,6 +1165,7 @@ int main(int argc, char** argv)
 	srand((unsigned int)time(0));
 	//SDL Init
 	SDL_Init(SDL_INIT_EVERYTHING);
+	Mix_OpenAudio(22050, MIX_DEFAULT_FORMAT, 2, 4096);
 	unsigned short window_w = 1024;
 	unsigned short window_h = 768;
 	SDL_Window* window = SDL_CreateWindow("Hero Chicken", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, window_w, window_h, SDL_WINDOW_SHOWN);
@@ -1144,7 +1187,9 @@ int main(int argc, char** argv)
 	int n_inputs = 0;
 	float atk_range = 0.25;
 	SDL_Texture* hud_sheet = { 0 };
-	load_Image_To_Texture(&hud_sheet, renderer, "Assets/Images/HUD_Elements.png");
+	load_Image_To_Texture(&hud_sheet, renderer, "Assets/Images/HUD.png");
+	int hud_w = 64;
+	int hut_h = 128;
 
 	//font init
 	Text::Font font = { 0 };
@@ -1179,7 +1224,7 @@ int main(int argc, char** argv)
 	load_Sheet(&chicken_sheet, 64, 64, renderer, "Assets/Images/PlayerSpritesheet.png");
 
 	Entity_Key chicken_key = { 0 };
-	load_Entity_Key(&chicken_key, "Assets/EDS/Chicken.eds", &chicken_sheet);
+	load_Entity_Key(&chicken_key, "Assets/EDS/Chicken.eds", &chicken_sheet, NULL, "Assets/Audio/SFX/Chicken_Attack_Miss.wav", NULL, NULL);
 	chicken_key.max_hp = 3;
 
 	Entity_Instance p1 = { 0 };
@@ -1196,7 +1241,7 @@ int main(int argc, char** argv)
 	load_Sheet(&enemy_sheet, 64, 64, renderer, "Assets/Images/EnemySpritesheet.png");
 
 	Entity_Key enemy_key = { 0 };
-	load_Entity_Key(&enemy_key, "Assets/EDS/Enemy.eds", &enemy_sheet);
+	load_Entity_Key(&enemy_key, "Assets/EDS/Enemy.eds", &enemy_sheet, "Assets/Audio/SFX/Blob_Movement.wav", "Assets/Audio/SFX/Blob_Attack.wav", "Assets/Audio/SFX/Chicken_Attack_Hit.wav", "Assets/Audio/SFX/Enemy_Death.wav");
 	enemy_key.speed = 0.05f;
 	enemy_key.max_hp = 2;
 
@@ -1231,6 +1276,9 @@ int main(int argc, char** argv)
 
 	float lava_roam = 0.0f;
 	float lava_speed = 0.25f;
+
+	Mix_Chunk* ambient = Mix_LoadWAV("Assets/Audio/Ambient/Drip Cave.wav");
+	Mix_PlayChannel(-1, ambient, -1);
 
 	for (;;)
 	{
@@ -1321,7 +1369,11 @@ int main(int argc, char** argv)
 			//input physics
 			if (direction == MID)
 			{
-				if (space_state == 1 && prev_space_state == 0 && (p1.state == IDLE || p1.state == WALK)) p1.state = ATTACK;
+				if (space_state == 1 && prev_space_state == 0 && (p1.state == IDLE || p1.state == WALK))
+				{
+					Mix_PlayChannel(-1, p1.key->atk_s, 0);
+					p1.state = ATTACK;
+				}
 				else
 				{
 					if (p1.state != ATTACK && p1.state != DAMAGE && p1.state != DYING && p1.state != DEAD)
@@ -1358,8 +1410,8 @@ int main(int argc, char** argv)
 						for (int i = 0; i < max_enemies; ++i) enemies[i].state = DEAD;
 						p1.state = IDLE;
 						p1.curr_hp = p1.key->max_hp;
-						p1.x = dungeon_map.room_w * 0.5 - 0.5;
-						p1.y = dungeon_map.room_h * 0.5 - 0.5;
+						p1.x = dungeon_map.room_w * 0.5f - 0.5f;
+						p1.y = dungeon_map.room_h * 0.5f - 0.5f;
 						player_money = 0;
 						locale[MID] = generate_Map(&dungeon_map, 3, 3, key);
 						locale[LEFT] = locale[MID] - 1;
@@ -1592,13 +1644,27 @@ int main(int argc, char** argv)
 				draw_Rooms_Layers(renderer, dungeon_map.walls, locale[MID], direction,
 					&terrain_sheet, dungeon_map.room_w, dungeon_map.room_h, dungeon_map.map_w, &camera);
 			}
-			//display health
-			SDL_Rect bar_src = { 192, 0, 64, 128 };
-			SDL_Rect bar_dest = { 0, 0, 64, 128 };
-			//SDL_RenderCopy(renderer, );
+			//empty hp bar
+			SDL_Rect hud_src = { 64, 0, 64, 128 };
+			SDL_Rect hud_dest = { 0, 0, 64, 128 };
+			SDL_RenderCopy(renderer, hud_sheet, &hud_src, &hud_dest);
+			//fill w/ hp
+			hud_src.x = 0;
+			float hp_frac = (float)p1.curr_hp / (float)p1.key->max_hp;
+			hud_src.h = (int)((float)(128 - 32) * hp_frac);
+			hud_src.y = 128 - hud_src.h;
+			hud_dest.y = hud_src.y;
+			hud_dest.h = hud_src.h;
+			SDL_RenderCopy(renderer, hud_sheet, &hud_src, &hud_dest);
+			//heart
+			hud_src = { 128, 0, 64, 64 };
+			hud_dest = { 0, 0, 64, 64 };
+			SDL_RenderCopy(renderer, hud_sheet, &hud_src, &hud_dest);
 			//display money
-			Text::draw_Text(renderer, "Money: ", 0, 0, 250, &font, 21);
-			Text::draw_Int(renderer, player_money, 140, 0, 250, &font, 21);
+			hud_src = { 128, 64, 64, 64 };
+			hud_dest = { 64, 0, 64, 64 };
+			SDL_RenderCopy(renderer, hud_sheet, &hud_src, &hud_dest);
+			Text::draw_Int(renderer, player_money, 128, 16, 250, &font, 32);
 			SDL_RenderPresent(renderer);
 		}
 	}
