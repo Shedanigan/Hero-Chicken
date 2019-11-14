@@ -1,3 +1,5 @@
 Idle Frame: 24-33-37
 Walk Start: 24-32-36	Walk End: 26-35-39	Walk Rate: 10-15-15
 Attack Start: 40-48-51	Attack End: 42-50-53	Attack Rate: 8-8-8
+Damage Start: 64-72-80	Damage End: 65-73-80	Damage Rate: 8-8-8
+Death Start: 64-72-80	Death End: 68-76-84	Death Rate: 8-8-8

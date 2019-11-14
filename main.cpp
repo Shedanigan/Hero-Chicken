@@ -1,9 +1,9 @@
 #pragma comment (linker, "/subsystem:console")
 
 #include <assert.h>
-#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #include "SDL2-2.0.9/include/SDL.h"
 #pragma comment(lib, "SDL2-2.0.9\\lib\\x86\\SDL2.lib")
@@ -187,11 +187,11 @@ void load_Map_Key(Map_Key* key, int room_w, int room_h, int n_walls, int n_floor
 	for (int i = 0; i < n_walls; ++i)
 	{
 		key->walls[i].visual = (int*)calloc(room_area, sizeof(int));
-		sprintf(path, "Assets/CSV/Cave_Demo_Wall %d.csv", i);
+		sprintf(path, "Assets/CSV/Cave_Walls_%d_Visual.csv", i);
 		load_CSV(key->walls[i].visual, room_w, room_h, path);
 
 		key->walls[i].collision = (int*)calloc(room_area, sizeof(int));
-		sprintf(path, "Assets/CSV/Cave_Demo_Collision Wall %d.csv", i);
+		sprintf(path, "Assets/CSV/Cave_Walls_%d_Collision.csv", i);
 		load_CSV(key->walls[i].collision, room_w, room_h, path);
 	}
 
@@ -199,19 +199,19 @@ void load_Map_Key(Map_Key* key, int room_w, int room_h, int n_walls, int n_floor
 	for (int i = 0; i < n_floors; ++i)
 	{
 		key->floors[i].floor = (int*)calloc(room_area, sizeof(int));
-		sprintf(path, "Assets/CSV/Cave_Demo_Floor %d.csv", i);
+		sprintf(path, "Assets/CSV/Cave_Floors_%d_Visual.csv", i);
 		load_CSV(key->floors[i].floor, room_w, room_h, path);
 
 		key->floors[i].collision = (int*)calloc(room_area, sizeof(int));
-		sprintf(path, "Assets/CSV/Cave_Demo_Floor %d Collision.csv", i);
+		sprintf(path, "Assets/CSV/Cave_Floors_%d_Collision.csv", i);
 		load_CSV(key->floors[i].collision, room_w, room_h, path);
 
 		key->floors[i].props = (int*)calloc(room_area, sizeof(int));
-		sprintf(path, "Assets/CSV/Cave_Demo_Props %d.csv", i);
+		sprintf(path, "Assets/CSV/Cave_Floors_%d_Props.csv", i);
 		load_CSV(key->floors[i].props, room_w, room_h, path);
 
 		key->floors[i].spawns = (int*)calloc(room_area, sizeof(int));
-		sprintf(path, "Assets/CSV/Cave_Demo_Spawn %d.csv", i);
+		sprintf(path, "Assets/CSV/Cave_Floors_%d_Spawn.csv", i);
 		load_CSV(key->floors[i].spawns, room_w, room_h, path);
 	}
 }
@@ -412,6 +412,318 @@ struct Entity_Instance
 	char state, direction;
 };
 
+struct Node
+{
+	int x, y, px, py, h_cost;
+};
+
+struct Heap
+{
+	int n_data, max_data;
+	int* id;
+};
+
+void add_To_Heap(Heap* heap, Node* data, int input, int room_w)
+{
+	heap->id[heap->n_data] = input;
+	int pos = heap->n_data;
+	int parent_pos = (heap->n_data - 1) / 2;
+	++heap->n_data;
+	//printf("Adding %d\n", input);
+	while (pos > 0 && parent_pos >= 0 && data[heap->id[pos]].h_cost < data[heap->id[parent_pos]].h_cost)
+	{
+		int temp = heap->id[parent_pos];
+		heap->id[parent_pos] = heap->id[pos];
+		heap->id[pos] = temp;
+		pos = parent_pos;
+		parent_pos = (pos - 1) / 2;
+	}
+	//for (int i = 0; i < heap->n_data; ++i) printf("%d ", data[heap->id[i]].h_cost);
+	//printf("\n");
+}
+
+int get_From_Heap(Heap* heap, Node* data)
+{
+	int gotten_node = heap->id[0];
+	--heap->n_data;
+	//printf("Removing %d\n", gotten_node);
+	heap->id[0] = heap->id[heap->n_data];
+	if (heap->n_data <= 1) return gotten_node;
+
+	int pos = 0;
+	int child_pos = 1;
+	if (child_pos < heap->n_data - 1 && data[heap->id[child_pos]].h_cost > data[heap->id[child_pos + 1]].h_cost) ++child_pos;
+
+	while (data[heap->id[pos]].h_cost > data[heap->id[child_pos]].h_cost)
+	{
+		//printf("Swap!\n");
+		int temp = heap->id[child_pos];
+		heap->id[child_pos] = heap->id[pos];
+		heap->id[pos] = temp;
+
+		pos = child_pos;
+		child_pos = (pos * 2) + 1;
+		if (child_pos >= heap->n_data) break;
+		if (child_pos < heap->n_data - 1 && data[heap->id[child_pos]].h_cost > data[heap->id[child_pos + 1]].h_cost) ++child_pos;
+	}
+	//for (int i = 0; i < heap->n_data; ++i) printf("%d ", data[heap->id[i]].h_cost);
+	//printf("\n");
+	return gotten_node;
+}
+
+void check_successor(Heap* heap, Node* data, int* closed, int n_closed, const Node successor, int* wall_col, int* floor_col, int room_w, int dx, int dy)
+{
+	int succ_id = successor.y * room_w + successor.x;
+	if (wall_col[succ_id] < 0 && floor_col[succ_id] < 0)
+	{
+		int skip = 0;
+		for (int i = 0; i < heap->n_data; ++i)
+		{
+			if (heap->id[i] == succ_id)
+			{
+				if (data[heap->id[i]].h_cost < successor.h_cost && data[heap->id[i]].h_cost != -1)
+				{
+					skip = 1;
+				}
+				i = heap->n_data;
+			}
+		}
+		if (skip == 0)
+		{
+			for (int i = 0; i < n_closed; ++i)
+			{
+				if (closed[i] == succ_id)
+				{
+					if (data[closed[i]].h_cost <= successor.h_cost && data[closed[i]].h_cost != -1)
+					{
+						skip = 1;
+					}
+					i = n_closed;
+				}
+			}
+			if (skip == 0)
+			{
+				data[succ_id].px = successor.px;
+				data[succ_id].py = successor.py;
+				add_To_Heap(heap, data, succ_id, room_w);
+			}
+		}
+	}
+}
+
+void move_To_Position(Entity_Instance* e, int* wall_col, int* floor_col, int room_w, int room_h, float dest_x, float dest_y)
+{
+	int ex = (int)e->x;
+	int ey = (int)e->y;
+	//printf("True: %f %f\n", e->x, e->y);
+	//printf("Assumed: %f %f\n", (float)ex, (float)ey);
+	if ((float)ex != e->x)
+	{
+		if (fabs((float)ex - e->x) < e->key->speed - 0.01f)
+		{
+			//printf("Correct Left\n");
+			e->x = (float)ex;
+		}
+		else if (fabs((float)ex - e->x) > 1.01f - e->key->speed)
+		{
+			//printf("Correct Right\n");
+			e->x = (float)ex + 1.0f;
+		}
+		else
+		{
+			if (e->direction == LEFT) e->x -= e->key->speed;
+			else e->x += e->key->speed;
+			return;
+		}
+	}
+	else if ((float)ey != e->y)
+	{
+		if (fabs((float)ey - e->y) < e->key->speed - 0.01f)
+		{
+			//printf("Correct Up\n");
+			e->y = (float)ey;
+		}
+		else if (fabs((float)ey - e->y) > 1.01f - e->key->speed)
+		{
+			//printf("Correct Down\n");
+			e->y = (float)ey + 1.0f;
+		}
+		else
+		{
+			if (e->direction == UP) e->y -= e->key->speed;
+			else e->y += e->key->speed;
+			return;
+		}
+	}
+	int dx = (int)(dest_x + 0.5);
+	int dy = (int)(dest_y + 0.5);
+	int direction = 0;
+
+	//a* to get direction
+	Node* data = (Node*)calloc(room_w * room_h, sizeof(Node));
+	for (int i = 0; i < room_w * room_h; ++i)
+	{
+		data[i].x = i % room_w;
+		data[i].y = i / room_w;
+		data[i].h_cost = abs(data[i].x - dx) + abs(data[i].y - dy);
+	}
+
+	Heap open = { 0 };
+	open.max_data = room_w * room_h;
+	open.id = (int*)calloc(open.max_data, sizeof(int));
+
+	int* closed = (int*)calloc(open.max_data, sizeof(int));
+	int n_closed = 0;
+
+	int curr_id = ey * room_w + ex;
+	Node curr_node = { 0 };
+	curr_node.x = ex;
+	curr_node.y = ey;
+	curr_node.h_cost = abs(ex - dx) + abs(ey - dy);
+	add_To_Heap(&open, data, curr_id, room_w);
+
+	Node successor = { 0 };
+
+	int search = 1;
+
+	//find path
+	while (open.n_data > 0 && search == 1)
+	{
+		curr_id = get_From_Heap(&open, data);
+		curr_node = data[curr_id];
+		//printf("Current Position: %d %d %d\n", curr_node.x, curr_node.y, curr_node.h_cost);
+		successor = curr_node;
+		successor.px = curr_node.x;
+		successor.py = curr_node.y;
+		if (curr_node.x > 0)
+		{
+			--successor.x;
+			if (wall_col[successor.y * room_w + successor.x] < 0 && floor_col[successor.y * room_w + successor.x] < 0)
+			{
+				successor.h_cost = abs(successor.x - dx) + abs(successor.y - dy);
+				//printf("Success Position: %d %d %d\n", curr_node.x, curr_node.y, curr_node.h_cost);
+				if (successor.h_cost == 0)
+				{
+					data[successor.y * room_w + successor.x].px = successor.px;
+					data[successor.y * room_w + successor.x].py = successor.py;
+					search = 0;
+					break;
+				}
+				else check_successor(&open, data, closed, n_closed, successor, wall_col, floor_col, room_w, dx, dy);
+			}
+			++successor.x;
+		}
+		if (curr_node.x < room_w - 1)
+		{
+			++successor.x;
+			if (wall_col[successor.y * room_w + successor.x] < 0 && floor_col[successor.y * room_w + successor.x] < 0)
+			{
+				successor.h_cost = abs(successor.x - dx) + abs(successor.y - dy);
+				//printf("Success Position: %d %d %d\n", curr_node.x, curr_node.y, curr_node.h_cost);
+				if (successor.h_cost == 0)
+				{
+					data[successor.y * room_w + successor.x].px = successor.px;
+					data[successor.y * room_w + successor.x].py = successor.py;
+					search = 0;
+					break;
+				}
+				else check_successor(&open, data, closed, n_closed, successor, wall_col, floor_col, room_w, dx, dy);
+			}
+			--successor.x;
+		}
+		if (curr_node.y > 0)
+		{
+			--successor.y;
+			if (wall_col[successor.y * room_w + successor.x] < 0 && floor_col[successor.y * room_w + successor.x] < 0)
+			{
+				successor.h_cost = abs(successor.x - dx) + abs(successor.y - dy);
+				//printf("Success Position: %d %d %d\n", curr_node.x, curr_node.y, curr_node.h_cost);
+				if (successor.h_cost == 0)
+				{
+					data[successor.y * room_w + successor.x].px = successor.px;
+					data[successor.y * room_w + successor.x].py = successor.py;
+					search = 0;
+					break;
+				}
+				else check_successor(&open, data, closed, n_closed, successor, wall_col, floor_col, room_w, dx, dy);
+			}
+			++successor.y;
+		}
+		if (curr_node.y < room_h - 1)
+		{
+			++successor.y;
+			if (wall_col[successor.y * room_w + successor.x] < 0 && floor_col[successor.y * room_w + successor.x] < 0)
+			{
+				successor.h_cost = abs(successor.x - dx) + abs(successor.y - dy);
+				//printf("Success Position: %d %d %d\n", curr_node.x, curr_node.y, curr_node.h_cost);
+				if (successor.h_cost == 0)
+				{
+					data[successor.y * room_w + successor.x].px = successor.px;
+					data[successor.y * room_w + successor.x].py = successor.py;
+					search = 0;
+					break;
+				}
+				else check_successor(&open, data, closed, n_closed, successor, wall_col, floor_col, room_w, dx, dy);
+			}
+			--successor.y;
+		}
+		closed[n_closed] = curr_id;
+		++n_closed;
+	}
+
+	//get direction
+	//printf("End found\n");
+	curr_id = dy * room_w + dx;
+	int start_id = ey * room_w + ex;
+	int n_steps = 0;
+	while (curr_id != start_id)
+	{
+		++n_steps;
+		if (data[curr_id].px == 0 || data[curr_id].py == 0) break;
+
+		if (data[curr_id].px - data[curr_id].x < 0) direction = RIGHT;
+		else if (data[curr_id].px - data[curr_id].x > 0) direction = LEFT;
+		else if (data[curr_id].py - data[curr_id].y > 0) direction = UP;
+		else direction = DOWN;
+		//printf("%d %d %d\n", data[curr_id].x, data[curr_id].y, direction);
+		curr_id = data[curr_id].py * room_w + data[curr_id].px;
+	}
+
+	//deallocate
+	free(open.id);
+	free(data);
+	free(closed);
+
+	//printf("Before: %f %f\n", e->x, e->y);
+	//printf("Assumed: %d %d\n", ex, ey);
+	//move once direction known
+	e->state = WALK;
+	e->direction = direction;
+	if (n_steps <= 1) e->state = ATTACK;
+	else if (direction == LEFT)
+	{
+		if ((float)ey != e->y && (wall_col[(ey+1) * room_w + ex - 1] >= 0 || floor_col[(ey+1) * room_w + ex - 1] >= 0))
+		{
+			e->direction = UP;
+			e->y -= e->key->speed;
+		}
+		else e->x -= e->key->speed;
+	}
+	else if (direction == RIGHT)
+	{
+		if ((float)ey != e->y && (wall_col[(ey + 1) * room_w + ex + 1] >= 0 || floor_col[(ey + 1) * room_w + ex + 1] >= 0))
+		{
+			e->direction = UP;
+			e->y -= e->key->speed;
+		}
+		else e->x += e->key->speed;
+	}
+	else if (direction == DOWN) e->y += e->key->speed;
+	else if (direction == UP) e->y -= e->key->speed;
+
+	//printf("After: %f %f\n", e->x, e->y);
+}
+
 int check_Hit_Collision(Entity_Instance* def, const Entity_Instance atk, float atk_buffer)
 {
 	if (atk.direction == LEFT)
@@ -421,7 +733,11 @@ int check_Hit_Collision(Entity_Instance* def, const Entity_Instance atk, float a
 		{
 			--def->curr_hp;
 			def->direction = RIGHT;
-			if (def->curr_hp <= 0) def->state = DYING;
+			if (def->curr_hp <= 0)
+			{
+				def->state = DYING;
+				return 2;
+			}
 			else def->state = DAMAGE;
 			return 1;
 		}
@@ -433,7 +749,11 @@ int check_Hit_Collision(Entity_Instance* def, const Entity_Instance atk, float a
 		{
 			--def->curr_hp;
 			def->direction = LEFT;
-			if (def->curr_hp <= 0) def->state = DYING;
+			if (def->curr_hp <= 0)
+			{
+				def->state = DYING;
+				return 2;
+			}
 			else def->state = DAMAGE;
 			return 1;
 		}
@@ -445,7 +765,11 @@ int check_Hit_Collision(Entity_Instance* def, const Entity_Instance atk, float a
 		{
 			--def->curr_hp;
 			def->direction = UP;
-			if (def->curr_hp <= 0) def->state = DYING;
+			if (def->curr_hp <= 0)
+			{
+				def->state = DYING;
+				return 2;
+			}
 			else def->state = DAMAGE;
 			return 1;
 		}
@@ -457,7 +781,11 @@ int check_Hit_Collision(Entity_Instance* def, const Entity_Instance atk, float a
 		{
 			--def->curr_hp;
 			def->direction = DOWN;
-			if (def->curr_hp <= 0) def->state = DYING;
+			if (def->curr_hp <= 0)
+			{
+				def->state = DYING;
+				return 2;
+			}
 			else def->state = DAMAGE;
 			return 1;
 		}
@@ -465,18 +793,61 @@ int check_Hit_Collision(Entity_Instance* def, const Entity_Instance atk, float a
 	return 0;
 }
 
-void check_Tile_Collision(int* wall_c, int* floor_c, int room_w, Entity_Instance* e)
+void check_Tile_Collision(int* wall_c, int* floor_c, int room_w, Entity_Instance* e, int n_enemies)
 {
 	int ix = (int)e->x;
 	int iy = (int)e->y;
-	float cx = e->x + 0.5f;
-	float cy = e->y + 0.5f;
 
-	if (wall_c[iy*room_w+ix] >= 0 || floor_c[iy*room_w + ix] >= 0)
+	if ((wall_c[iy*room_w + ix] == 1 || (n_enemies > 0 && wall_c[iy*room_w+ix] >= 0)) || floor_c[iy*room_w + ix] >= 0)
 	{
-		
+		float dif1 = e->x - (float)ix;
+		float dif2 = e->y - (float)iy;
+		if (dif1 > dif2) e->x = (float)(ix + 1);
+		else e->y = (float)(iy + 1);
+		ix = (int)e->x;
+		iy = (int)e->y;
+	}
+	if ((float)ix != e->x)
+	{
+		if ((wall_c[iy*room_w + ix + 1] == 1 || (n_enemies > 0 && wall_c[iy*room_w + ix + 1] >= 0)) || floor_c[iy*room_w + ix + 1] >= 0)
+		{
+			float dif1 = (float)(ix + 1) - e->x;
+			float dif2 = e->y - (float)iy;
+			if (dif1 > dif2) e->x = (float)ix;
+			else e->y = (float)(iy + 1);
+			ix = (int)e->x;
+			iy = (int)e->y;
+		}
+	}
+
+	if ((wall_c[(iy + 1) * room_w + ix] == 1 || (n_enemies > 0 && wall_c[(iy + 1) * room_w + ix] >= 0)) || floor_c[(iy + 1) * room_w + ix] >= 0)
+	{
+		float dif1 = e->x - (float)ix;
+		float dif2 = (float)(iy + 1) - e->y;
+		if (dif1 > dif2) e->x = (float)(ix + 1);
+		else e->y = (float)iy;
+		ix = (int)e->x;
+		iy = (int)e->y;
+	}
+	if ((float)ix != e->x)
+	{
+		if ((wall_c[(iy + 1) * room_w + ix + 1] == 1 || (n_enemies > 0 && wall_c[(iy + 1) * room_w + ix + 1] >= 0)) || floor_c[(iy + 1) * room_w + ix + 1] >= 0)
+		{
+			float dif1 = (float)(ix + 1) - e->x;
+			float dif2 = (float)(iy + 1) - e->y;
+			if (dif1 > dif2) e->x = (float)ix;
+			else e->y = (float)iy;
+			ix = (int)e->x;
+			iy = (int)e->y;
+		}
 	}
 }
+
+struct Camera
+{
+	float x, y, speed;
+	int map_x, map_y, w, h, scale;
+};
 
 //draw when room stationary
 void draw_Entity_Instance(SDL_Renderer* renderer, const Entity_Instance e, int scale)
@@ -488,12 +859,6 @@ void draw_Entity_Instance(SDL_Renderer* renderer, const Entity_Instance e, int s
 	if (e.direction == LEFT) SDL_RenderCopyEx(renderer, e.key->spritesheet->sheet, &src, &dest, 0, NULL, SDL_FLIP_NONE);
 	else SDL_RenderCopyEx(renderer, e.key->spritesheet->sheet, &src, &dest, 0, NULL, SDL_FLIP_HORIZONTAL);
 }
-
-struct Camera
-{
-	float x, y, speed;
-	int map_x, map_y, w, h, scale;
-};
 
 //draw during room swapping
 void draw_Entity_Instance(SDL_Renderer* renderer, const Entity_Instance e, const Camera camera)
@@ -762,7 +1127,6 @@ int main(int argc, char** argv)
 	unsigned short window_h = 768;
 	SDL_Window* window = SDL_CreateWindow("Hero Chicken", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, window_w, window_h, SDL_WINDOW_SHOWN);
 	SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-	SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
 	//System Init
 	unsigned int curr_time = 0;
@@ -774,13 +1138,13 @@ int main(int argc, char** argv)
 	char d_state = 0;
 	char t_state = 0;
 	char space_state = 0;
-	char prev_w_state = 0;
-	char prev_a_state = 0;
-	char prev_s_state = 0;
-	char prev_d_state = 0;
 	char prev_t_state = 0;
 	char prev_space_state = 0;
+	int input_order[5] = { 0 };
+	int n_inputs = 0;
 	float atk_range = 0.25;
+	SDL_Texture* hud_sheet = { 0 };
+	load_Image_To_Texture(&hud_sheet, renderer, "Assets/Images/HUD_Elements.png");
 
 	//font init
 	Text::Font font = { 0 };
@@ -826,8 +1190,7 @@ int main(int argc, char** argv)
 	p1.direction = DOWN;
 	p1.state = IDLE;
 	p1.curr_hp = p1.key->max_hp;
-
-	int player_money = -20;
+	int player_money = 0;
 
 	Sheet enemy_sheet = { 0 };
 	load_Sheet(&enemy_sheet, 64, 64, renderer, "Assets/Images/EnemySpritesheet.png");
@@ -835,7 +1198,7 @@ int main(int argc, char** argv)
 	Entity_Key enemy_key = { 0 };
 	load_Entity_Key(&enemy_key, "Assets/EDS/Enemy.eds", &enemy_sheet);
 	enemy_key.speed = 0.05f;
-	enemy_key.max_hp = 1;
+	enemy_key.max_hp = 2;
 
 	const int max_enemies = 5;
 	int n_enemies = 0;
@@ -877,10 +1240,6 @@ int main(int argc, char** argv)
 			//update system
 			last_update_time = curr_time;
 			prev_direction = direction;
-			prev_w_state = w_state;
-			prev_a_state = a_state;
-			prev_s_state = s_state;
-			prev_d_state = d_state;
 			prev_t_state = t_state;
 			prev_space_state = space_state;
 			SDL_Event event;
@@ -891,60 +1250,123 @@ int main(int argc, char** argv)
 				{
 					char key = event.key.keysym.sym;
 					if (key == SDLK_ESCAPE) exit(0);
-					else if (key == SDLK_w) w_state = 1;
-					else if (key == SDLK_a) a_state = 1;
-					else if (key == SDLK_s) s_state = 1;
-					else if (key == SDLK_d) d_state = 1;
+					else if (key == SDLK_w)
+					{
+						++n_inputs;
+						input_order[UP] = n_inputs;
+						w_state = 1;
+					}
+					else if (key == SDLK_a)
+					{
+						++n_inputs;
+						input_order[LEFT] = n_inputs;
+						a_state = 1;
+					}
+					else if (key == SDLK_s)
+					{
+						++n_inputs;
+						input_order[DOWN] = n_inputs;
+						s_state = 1;
+					}
+					else if (key == SDLK_d)
+					{
+						++n_inputs;
+						input_order[RIGHT] = n_inputs;
+						d_state = 1;
+					}
 					else if (key == SDLK_t) t_state = 1;
 					else if (key == SDLK_SPACE) space_state = 1;
 				}
 				else if (event.type == SDL_KEYUP)
 				{
 					char key = event.key.keysym.sym;
-					if (key == SDLK_w) w_state = 0;
-					else if (key == SDLK_a) a_state = 0;
-					else if (key == SDLK_s) s_state = 0;
-					else if (key == SDLK_d) d_state = 0;
+					if (key == SDLK_w)
+					{
+						int order_pos = input_order[UP];
+						input_order[UP] = 0;
+						for (int i = 1; i < 5; ++i) if (input_order[i] > order_pos) --input_order[i];
+						w_state = 0;
+					}
+					else if (key == SDLK_a)
+					{
+						int order_pos = input_order[LEFT];
+						input_order[LEFT] = 0;
+						for (int i = 1; i < 5; ++i) if (input_order[i] > order_pos) --input_order[i];
+						a_state = 0;
+					}
+					else if (key == SDLK_s)
+					{
+						int order_pos = input_order[DOWN];
+						input_order[DOWN] = 0;
+						for (int i = 1; i < 5; ++i) if (input_order[i] > order_pos) --input_order[i];
+						s_state = 0;
+					}
+					else if (key == SDLK_d)
+					{
+						int order_pos = input_order[RIGHT];
+						input_order[RIGHT] = 0;
+						for (int i = 1; i < 5; ++i) if (input_order[i] > order_pos) --input_order[i];
+						d_state = 0;
+					}
 					else if (key == SDLK_t) t_state = 0;
 					else if (key == SDLK_SPACE) space_state = 0;
 				}
 			}
+
+			int last_pressed = 0;
+			for (int i = 1; i < 5; ++i) if (input_order[i] > input_order[last_pressed]) last_pressed = i;
 
 			if (t_state == 1 && prev_t_state == 0) debug_toggle *= -1;
 
 			//input physics
 			if (direction == MID)
 			{
-				if (space_state == 1 && prev_space_state == 0 && (p1.state == IDLE || p1.state == WALK))
-				{
-					p1.state = ATTACK;
-				}
+				if (space_state == 1 && prev_space_state == 0 && (p1.state == IDLE || p1.state == WALK)) p1.state = ATTACK;
 				else
 				{
-					if (p1.state != ATTACK) p1.state = IDLE;
-					if (w_state == 1)
+					if (p1.state != ATTACK && p1.state != DAMAGE && p1.state != DYING && p1.state != DEAD)
 					{
-						p1.state = WALK;
-						p1.direction = UP;
-						p1.y -= p1.key->speed;
+						p1.state = IDLE;
+						if (last_pressed == LEFT)
+						{
+							p1.state = WALK;
+							p1.direction = LEFT;
+							p1.x -= p1.key->speed;
+						}
+						else if (last_pressed == RIGHT)
+						{
+							p1.state = WALK;
+							p1.direction = RIGHT;
+							p1.x += p1.key->speed;
+						}
+						else if (last_pressed == DOWN)
+						{
+							p1.state = WALK;
+							p1.direction = DOWN;
+							p1.y += p1.key->speed;
+						}
+						else if (last_pressed == UP)
+						{
+							p1.state = WALK;
+							p1.direction = UP;
+							p1.y -= p1.key->speed;
+						}
 					}
-					if (a_state == 1)
+					else if (p1.state == DEAD)
 					{
-						p1.state = WALK;
-						p1.direction = LEFT;
-						p1.x -= p1.key->speed;
-					}
-					if (s_state == 1)
-					{
-						p1.state = WALK;
-						p1.direction = DOWN;
-						p1.y += p1.key->speed;
-					}
-					if (d_state == 1)
-					{
-						p1.state = WALK;
-						p1.direction = RIGHT;
-						p1.x += p1.key->speed;
+						n_enemies = 0;
+						for (int i = 0; i < max_enemies; ++i) enemies[i].state = DEAD;
+						p1.state = IDLE;
+						p1.curr_hp = p1.key->max_hp;
+						p1.x = dungeon_map.room_w * 0.5 - 0.5;
+						p1.y = dungeon_map.room_h * 0.5 - 0.5;
+						player_money = 0;
+						locale[MID] = generate_Map(&dungeon_map, 3, 3, key);
+						locale[LEFT] = locale[MID] - 1;
+						locale[RIGHT] = locale[MID] + 1;
+						locale[DOWN] = locale[MID] + dungeon_map.map_w;
+						locale[UP] = locale[MID] - dungeon_map.map_w;
+						++dungeon_map.visited[locale[MID]];
 					}
 				}
 				if (n_enemies <= 0)
@@ -971,6 +1393,15 @@ int main(int argc, char** argv)
 					}
 				}
 				
+				//AI behaviour
+				for (int i = 0; i < max_enemies; ++i)
+				{
+					if (enemies[i].state != DAMAGE && enemies[i].state != DYING && enemies[i].state != DEAD)
+					{
+						move_To_Position(&enemies[i], dungeon_map.wall_collisions[locale[MID]], dungeon_map.floor_collisions[locale[MID]], dungeon_map.room_w, dungeon_map.room_h, p1.x, p1.y);
+					}
+				}
+
 				//combat
 				if (p1.state == ATTACK)
 				{
@@ -979,27 +1410,42 @@ int main(int argc, char** argv)
 					{
 						if (enemies[i].state != DEAD && enemies[i].state != DAMAGE && enemies[i].state != DYING)
 						{
-							n_hits += check_Hit_Collision(&enemies[i], p1, atk_range);
+							if (check_Hit_Collision(&enemies[i], p1, atk_range) == 2) ++n_hits;
 						}
 					}
 					player_money += n_hits * 10;
 					n_enemies -= n_hits;
 				}
-				else if (p1.state != DEAD && p1.state != DAMAGE && p1.state != DYING)
+				if (p1.state != DEAD && p1.state != DAMAGE && p1.state != DYING)
 				{
 					for (int i = 0; i < max_enemies; ++i)
 					{
 						if (enemies[i].state == ATTACK)
 						{
-							check_Hit_Collision(&p1, enemies[i], atk_range);
+							int facing = F_SIDE;
+							if (enemies[i].direction == DOWN) facing = F_DOWN;
+							else if (enemies[i].direction == UP) facing = F_UP;
+							if (enemies[i].curr_frame > enemies[i].key->atk_start[facing] + 1 && enemies[i].curr_frame <= enemies[i].key->atk_end[facing])
+							{
+								check_Hit_Collision(&p1, enemies[i], atk_range);
+							}
 						}
 					}
 				}
-				//check collision
 
+				//wall collisions
+				check_Tile_Collision(dungeon_map.wall_collisions[locale[MID]], dungeon_map.floor_collisions[locale[MID]], dungeon_map.room_w, &p1, n_enemies);
+				for (int i = 0; i < max_enemies; ++i)
+				{
+					if (enemies[i].state != DEAD)
+					{
+						check_Tile_Collision(dungeon_map.wall_collisions[locale[MID]], dungeon_map.floor_collisions[locale[MID]], dungeon_map.room_w, &enemies[i], n_enemies);
+					}
+				}
 			}
 			else
 			{
+				//camera room panning
 				p1.state = IDLE;
 				if (direction == UP)
 				{
@@ -1070,6 +1516,7 @@ int main(int argc, char** argv)
 					}
 				}
 
+				//spawn enemies in unvisitted room
 				if (prev_direction != direction && dungeon_map.visited[locale[MID]] <= 0)
 				{
 					++dungeon_map.visited[locale[MID]];
@@ -1146,7 +1593,9 @@ int main(int argc, char** argv)
 					&terrain_sheet, dungeon_map.room_w, dungeon_map.room_h, dungeon_map.map_w, &camera);
 			}
 			//display health
-
+			SDL_Rect bar_src = { 192, 0, 64, 128 };
+			SDL_Rect bar_dest = { 0, 0, 64, 128 };
+			//SDL_RenderCopy(renderer, );
 			//display money
 			Text::draw_Text(renderer, "Money: ", 0, 0, 250, &font, 21);
 			Text::draw_Int(renderer, player_money, 140, 0, 250, &font, 21);
