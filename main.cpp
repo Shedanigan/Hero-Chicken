@@ -25,6 +25,7 @@ void load_Image_To_Texture(SDL_Texture** dest, SDL_Renderer* renderer, const cha
 
 void load_Image_And_Size_To_Texture(SDL_Texture** dest, int* width, int* height, SDL_Renderer* renderer, const char* src)
 {
+	//printf("%s\n", src);
 	SDL_Surface* temp = IMG_Load(src);
 	assert(temp);
 	SDL_LockSurface(temp);
@@ -111,9 +112,9 @@ namespace Text
 		}
 	}
 
+	//convert integer to string, then print string
 	void draw_Int(SDL_Renderer* renderer, int input, int box_x, int box_y, int box_w, Font* font, int size)
 	{
-		//convert integer to string, then print string
 		draw_Text(renderer, (const char*)int_To_String(input), box_x, box_y, box_w, font, size);
 	}
 }
@@ -142,12 +143,19 @@ struct Wall_Set
 	int* collision;
 };
 
+struct IPair
+{
+	int x, y;
+};
+
 struct Floor_Set
 {
-	int* floor;
+	int* ground;
+	int* ground_collision;
 	int* props;
-	int* spawns;
-	int* collision;
+	int* prop_collision;
+	IPair* spawns;
+	int n_spawn_points;
 };
 
 struct Map_Key
@@ -159,6 +167,7 @@ struct Map_Key
 
 void load_CSV(int* dest, int width, int height, const char* src)
 {
+	//printf("%s\n", src);
 	FILE* f_in = fopen(src, "r");
 	assert(f_in != NULL);
 	for (int i = 0; i < height; i++)
@@ -173,7 +182,7 @@ void load_CSV(int* dest, int width, int height, const char* src)
 	fclose(f_in);
 }
 
-void load_Map_Key(Map_Key* key, int room_w, int room_h, int n_walls, int n_floors)
+void load_Map_Key(Map_Key* key, int room_w, int room_h, int n_walls, int n_floors, const char* path_start)
 {
 	int room_area = room_w * room_h;
 	key->room_w = room_w;
@@ -189,32 +198,47 @@ void load_Map_Key(Map_Key* key, int room_w, int room_h, int n_walls, int n_floor
 	for (int i = 0; i < n_walls; ++i)
 	{
 		key->walls[i].visual = (int*)calloc(room_area, sizeof(int));
-		sprintf(path, "Assets/CSV/Cave_Walls_%d_Visual.csv", i);
+		sprintf(path, "%s_Walls_%d_Visual.csv", path_start, i);
 		load_CSV(key->walls[i].visual, room_w, room_h, path);
 
 		key->walls[i].collision = (int*)calloc(room_area, sizeof(int));
-		sprintf(path, "Assets/CSV/Cave_Walls_%d_Collision.csv", i);
+		sprintf(path, "%s_Walls_%d_Collision.csv", path_start, i);
 		load_CSV(key->walls[i].collision, room_w, room_h, path);
 	}
 
 	key->floors = (Floor_Set*)calloc(n_floors, sizeof(Floor_Set));
 	for (int i = 0; i < n_floors; ++i)
 	{
-		key->floors[i].floor = (int*)calloc(room_area, sizeof(int));
-		sprintf(path, "Assets/CSV/Cave_Floors_%d_Visual.csv", i);
-		load_CSV(key->floors[i].floor, room_w, room_h, path);
+		key->floors[i].ground = (int*)calloc(room_area, sizeof(int));
+		sprintf(path, "%s_Floors_%d_Ground.csv", path_start, i);
+		load_CSV(key->floors[i].ground, room_w, room_h, path);
 
-		key->floors[i].collision = (int*)calloc(room_area, sizeof(int));
-		sprintf(path, "Assets/CSV/Cave_Floors_%d_Collision.csv", i);
-		load_CSV(key->floors[i].collision, room_w, room_h, path);
+		key->floors[i].ground_collision = (int*)calloc(room_area, sizeof(int));
+		sprintf(path, "%s_Floors_%d_Ground_Collision.csv", path_start, i);
+		load_CSV(key->floors[i].ground_collision, room_w, room_h, path);
 
 		key->floors[i].props = (int*)calloc(room_area, sizeof(int));
-		sprintf(path, "Assets/CSV/Cave_Floors_%d_Props.csv", i);
+		sprintf(path, "%s_Floors_%d_Props.csv", path_start, i);
 		load_CSV(key->floors[i].props, room_w, room_h, path);
 
-		key->floors[i].spawns = (int*)calloc(room_area, sizeof(int));
-		sprintf(path, "Assets/CSV/Cave_Floors_%d_Spawn.csv", i);
-		load_CSV(key->floors[i].spawns, room_w, room_h, path);
+		key->floors[i].prop_collision = (int*)calloc(room_area, sizeof(int));
+		sprintf(path, "%s_Floors_%d_Props_Collision.csv", path_start, i);
+		load_CSV(key->floors[i].prop_collision, room_w, room_h, path);
+
+		int* spawn_layer = (int*)calloc(room_area, sizeof(int));
+		sprintf(path, "%s_Floors_%d_Spawn.csv", path_start, i);
+		load_CSV(spawn_layer, room_w, room_h, path);
+		key->floors[i].spawns = (IPair*)calloc(room_area, sizeof(IPair));
+		for (int j = 0; j < room_area; ++j)
+		{
+			if (spawn_layer[j] > -1)
+			{
+				key->floors[i].spawns[key->floors[i].n_spawn_points].x = j % room_w;
+				key->floors[i].spawns[key->floors[i].n_spawn_points].y = j / room_w;
+				++key->floors[i].n_spawn_points;
+			}
+		}
+		free(spawn_layer);
 	}
 }
 
@@ -222,12 +246,15 @@ struct Map
 {
 	int map_w, map_h, room_w, room_h;
 	int** wall_collisions;
-	int** floor_collisions;
+	int** ground_collisions;
+	int** prop_collisions;
 	int** walls;
-	int** floors;
+	int** ground;
 	int** props;
-	int** spawns;
+	IPair** spawns;
+	int* n_spawn_points;
 	int* visited;
+	int* subfloor_type;
 	Sheet* src_sheet;
 };
 
@@ -242,18 +269,24 @@ int generate_Map(Map* map, int map_w, int map_h, const Map_Key key)
 	//clear old key and allocate memory
 	if (map->wall_collisions != NULL) free(map->wall_collisions);
 	map->wall_collisions = (int**)calloc(map_area, sizeof(int*));
-	if (map->floor_collisions != NULL) free(map->floor_collisions);
-	map->floor_collisions = (int**)calloc(map_area, sizeof(int*));
+	if (map->ground_collisions != NULL) free(map->ground_collisions);
+	map->ground_collisions = (int**)calloc(map_area, sizeof(int*));
+	if (map->prop_collisions != NULL) free(map->prop_collisions);
+	map->prop_collisions = (int**)calloc(map_area, sizeof(int*));
 	if (map->walls != NULL) free(map->walls);
 	map->walls = (int**)calloc(map_area, sizeof(int*));
-	if (map->floors != NULL) free(map->floors);
-	map->floors = (int**)calloc(map_area, sizeof(int*));
+	if (map->ground != NULL) free(map->ground);
+	map->ground = (int**)calloc(map_area, sizeof(int*));
 	if (map->props != NULL) free(map->props);
 	map->props = (int**)calloc(map_area, sizeof(int*));
 	if (map->spawns != NULL) free(map->spawns);
-	map->spawns = (int**)calloc(map_area, sizeof(int*));
+	map->spawns = (IPair**)calloc(map_area, sizeof(IPair*));
+	if (map->n_spawn_points != NULL) free(map->n_spawn_points);
+	map->n_spawn_points = (int*)calloc(map_area, sizeof(int));
 	if (map->visited != NULL) free(map->visited);
 	map->visited = (int*)calloc(map_area, sizeof(int));
+	if (map->subfloor_type != NULL) free(map->subfloor_type);
+	map->subfloor_type = (int*)calloc(map_area, sizeof(int));
 
 	//start at the bottom, end at the top
 	int maze_start = map_w * map_h - (rand() % map_w) - 1;
@@ -268,7 +301,6 @@ int generate_Map(Map* map, int map_w, int map_h, const Map_Key key)
 	while (n_stack > 0)
 	{
 		current_pos = track_stack[n_stack - 1];
-
 		if (current_pos == maze_end || (
 			((current_pos % map_w) - 1 < 0 || maze[current_pos - 1] != 0) &&
 			((current_pos % map_w) + 1 >= map_w || maze[current_pos + 1] != 0) &&
@@ -336,29 +368,65 @@ int generate_Map(Map* map, int map_w, int map_h, const Map_Key key)
 		}
 	}
 
+	int* rands = (int*)calloc(map_w * map_h, sizeof(int));
 	//save wall and floor sets to current map
-	for (int i = 0; i < map_area; i++)
+	for (int i = 0; i < map_area; ++i)
 	{
 		map->wall_collisions[i] = key.walls[maze[i]].collision;
 		map->walls[i] = key.walls[maze[i]].visual;
 
 		int floor_rand = rand() % key.n_floors;
-		map->floor_collisions[i] = key.floors[floor_rand].collision;
-		map->floors[i] = key.floors[floor_rand].floor;
+		rands[i] = floor_rand;
+		map->ground_collisions[i] = key.floors[floor_rand].ground_collision;
+		map->prop_collisions[i] = key.floors[floor_rand].prop_collision;
+		map->ground[i] = key.floors[floor_rand].ground;
 		map->props[i] = key.floors[floor_rand].props;
 		map->spawns[i] = key.floors[floor_rand].spawns;
+		map->n_spawn_points[i] = key.floors[floor_rand].n_spawn_points;
+		map->subfloor_type[i] = rand() % 4;
+	}
+
+	rands[maze_start] = 0;
+
+	//draw dungeon map
+	system("cls");
+	printf("   Map\n");
+	for (int i = 0; i < map_area; i++)
+	{
+		if (i == maze_start) printf(" S ");
+		else if (i == maze_end) printf(" E ");
+		else  if (maze[i] == 0) printf("   ");
+		else if (maze[i] == 1) printf("-  ");
+		else if (maze[i] == 2) printf("  -");
+		else if (maze[i] == 3) printf("- -");
+		else if (maze[i] == 4) printf(" , ");
+		else if (maze[i] == 5) printf("-, ");
+		else if (maze[i] == 6) printf(" ,-");
+		else if (maze[i] == 7) printf("-,-");
+		else if (maze[i] == 8) printf(" ' ");
+		else if (maze[i] == 9) printf("-' ");
+		else if (maze[i] == 10) printf(" '-");
+		else if (maze[i] == 11) printf("-'-");
+		else if (maze[i] == 12) printf(" | ");
+		else if (maze[i] == 13) printf("-| ");
+		else if (maze[i] == 14) printf(" |-");
+		else if (maze[i] == 15) printf("-|-");
+		
+		if (i % map_w == map_w - 1) printf("\n");
 	}
 
 	//Set no hazards for starting room
-	map->floors[maze_start] = key.floors[0].floor;
-	map->floor_collisions[maze_start] = key.floors[0].collision;
+	map->ground[maze_start] = key.floors[0].ground;
+	map->ground_collisions[maze_start] = key.floors[0].ground_collision;
+	map->prop_collisions[maze_start] = key.floors[0].prop_collision;
 	map->props[maze_start] = key.floors[0].props;
 	map->spawns[maze_start] = key.floors[0].spawns;
+	map->n_spawn_points[maze_start] = key.floors[0].n_spawn_points;
 	return maze_start;
 }
 
 //animation & entity states
-enum {DEAD = 0, IDLE, WALK, ATTACK, DAMAGE, DYING};
+enum {DEAD = 0, IDLE, WALK, ATTACK, DAMAGE, DYING, FALL};
 
 //for drawing entity
 enum {F_SIDE = 0, F_DOWN, F_UP};
@@ -368,11 +436,12 @@ struct Entity_Key
 	Sheet* spritesheet;
 	float speed;
 	unsigned int max_hp;
-	unsigned int idle_frame[3],
+	int idle_frame[3],
 		walk_start[3], walk_end[3], walk_rate[3],
 		atk_start[3], atk_end[3], atk_rate[3],
 		dmg_start[3], dmg_end[3], dmg_rate[3],
-		death_start[3], death_end[3], death_rate[3];
+		death_start[3], death_end[3], death_rate[3],
+		fall_start[3], fall_end[3], fall_rate[3];
 	Mix_Chunk* move_s;
 	Mix_Chunk* atk_s;
 	Mix_Chunk* dmg_s;
@@ -406,21 +475,22 @@ void load_Entity_Key(Entity_Key* entity, const char* eds_path, Sheet* sheet, con
 		&entity->death_start[0], &entity->death_start[1], &entity->death_start[2],
 		&entity->death_end[0], &entity->death_end[1], &entity->death_end[2],
 		&entity->death_rate[0], &entity->death_rate[1], &entity->death_rate[2]);
-	/* ready for later once damage and death types are used
 	fscanf(f_in, "Fall Start: %d-%d-%d\tFall End: %d-%d-%d\tFall Rate: %d-%d-%d\n",
 		&entity->fall_start[0], &entity->fall_start[1], &entity->fall_start[2],
 		&entity->fall_end[0], &entity->fall_end[1], &entity->fall_end[2],
 		&entity->fall_rate[0], &entity->fall_rate[1], &entity->fall_rate[2]);
-	*/
 }
 
+//typing
+enum {GROUND = 0, AIR = 1};
 struct Entity_Instance
 {
 	Entity_Key* key;
 	float x, y;
-	unsigned int last_update, curr_frame;
+	unsigned int last_update;
+	int curr_frame;
 	int curr_hp;
-	char state, direction;
+	char state, direction, type;
 };
 
 struct Node
@@ -440,7 +510,6 @@ void add_To_Heap(Heap* heap, Node* data, int input, int room_w)
 	int pos = heap->n_data;
 	int parent_pos = (heap->n_data - 1) / 2;
 	++heap->n_data;
-	//printf("Adding %d\n", input);
 	while (pos > 0 && parent_pos >= 0 && data[heap->id[pos]].h_cost < data[heap->id[parent_pos]].h_cost)
 	{
 		int temp = heap->id[parent_pos];
@@ -449,15 +518,13 @@ void add_To_Heap(Heap* heap, Node* data, int input, int room_w)
 		pos = parent_pos;
 		parent_pos = (pos - 1) / 2;
 	}
-	//for (int i = 0; i < heap->n_data; ++i) printf("%d ", data[heap->id[i]].h_cost);
-	//printf("\n");
 }
 
 int get_From_Heap(Heap* heap, Node* data)
 {
 	int gotten_node = heap->id[0];
 	--heap->n_data;
-	//printf("Removing %d\n", gotten_node);
+
 	heap->id[0] = heap->id[heap->n_data];
 	if (heap->n_data <= 1) return gotten_node;
 
@@ -467,7 +534,6 @@ int get_From_Heap(Heap* heap, Node* data)
 
 	while (data[heap->id[pos]].h_cost > data[heap->id[child_pos]].h_cost)
 	{
-		//printf("Swap!\n");
 		int temp = heap->id[child_pos];
 		heap->id[child_pos] = heap->id[pos];
 		heap->id[pos] = temp;
@@ -477,15 +543,14 @@ int get_From_Heap(Heap* heap, Node* data)
 		if (child_pos >= heap->n_data) break;
 		if (child_pos < heap->n_data - 1 && data[heap->id[child_pos]].h_cost > data[heap->id[child_pos + 1]].h_cost) ++child_pos;
 	}
-	//for (int i = 0; i < heap->n_data; ++i) printf("%d ", data[heap->id[i]].h_cost);
-	//printf("\n");
 	return gotten_node;
 }
 
-void check_successor(Heap* heap, Node* data, int* closed, int n_closed, const Node successor, int* wall_col, int* floor_col, int room_w, int dx, int dy)
+void check_Ground_Successor(Heap* heap, Node* data, int* closed, int n_closed, const Node successor, int* wall_col, int* floor_col, int* prop_col, int room_w, int dx, int dy)
 {
 	int succ_id = successor.y * room_w + successor.x;
-	if (wall_col[succ_id] < 0 && floor_col[succ_id] < 0)
+	if (wall_col[succ_id] < 0 && floor_col[succ_id] % 8 != 2 && 
+		(prop_col[succ_id] % 8 != 3 || prop_col[succ_id] % 8 != 4))
 	{
 		int skip = 0;
 		for (int i = 0; i < heap->n_data; ++i)
@@ -522,22 +587,18 @@ void check_successor(Heap* heap, Node* data, int* closed, int n_closed, const No
 	}
 }
 
-void move_To_Position(Entity_Instance* e, int* wall_col, int* floor_col, int room_w, int room_h, float dest_x, float dest_y)
+void move_Ground_Entity(Entity_Instance* e, int* wall_col, int* floor_col, int* prop_col, int room_w, int room_h, float dest_x, float dest_y)
 {
 	int ex = (int)e->x;
 	int ey = (int)e->y;
-	//printf("True: %f %f\n", e->x, e->y);
-	//printf("Assumed: %f %f\n", (float)ex, (float)ey);
 	if ((float)ex != e->x)
 	{
 		if (fabs((float)ex - e->x) < e->key->speed - 0.01f)
 		{
-			//printf("Correct Left\n");
 			e->x = (float)ex;
 		}
 		else if (fabs((float)ex - e->x) > 1.01f - e->key->speed)
 		{
-			//printf("Correct Right\n");
 			e->x = (float)ex + 1.0f;
 		}
 		else
@@ -551,12 +612,10 @@ void move_To_Position(Entity_Instance* e, int* wall_col, int* floor_col, int roo
 	{
 		if (fabs((float)ey - e->y) < e->key->speed - 0.01f)
 		{
-			//printf("Correct Up\n");
 			e->y = (float)ey;
 		}
 		else if (fabs((float)ey - e->y) > 1.01f - e->key->speed)
 		{
-			//printf("Correct Down\n");
 			e->y = (float)ey + 1.0f;
 		}
 		else
@@ -602,17 +661,17 @@ void move_To_Position(Entity_Instance* e, int* wall_col, int* floor_col, int roo
 	{
 		curr_id = get_From_Heap(&open, data);
 		curr_node = data[curr_id];
-		//printf("Current Position: %d %d %d\n", curr_node.x, curr_node.y, curr_node.h_cost);
 		successor = curr_node;
 		successor.px = curr_node.x;
 		successor.py = curr_node.y;
 		if (curr_node.x > 0)
 		{
 			--successor.x;
-			if (wall_col[successor.y * room_w + successor.x] < 0 && floor_col[successor.y * room_w + successor.x] < 0)
+			//checking for collisions with walls, pits, and ground/all level props
+			if (wall_col[successor.y * room_w + successor.x] < 0 && floor_col[successor.y * room_w + successor.x] % 8 != 2 && 
+				(prop_col[successor.y * room_w + successor.x] % 8 != 3 || prop_col[successor.y * room_w + successor.x] % 8 != 4))
 			{
 				successor.h_cost = abs(successor.x - dx) + abs(successor.y - dy);
-				//printf("Success Position: %d %d %d\n", curr_node.x, curr_node.y, curr_node.h_cost);
 				if (successor.h_cost == 0)
 				{
 					data[successor.y * room_w + successor.x].px = successor.px;
@@ -620,17 +679,17 @@ void move_To_Position(Entity_Instance* e, int* wall_col, int* floor_col, int roo
 					search = 0;
 					break;
 				}
-				else check_successor(&open, data, closed, n_closed, successor, wall_col, floor_col, room_w, dx, dy);
+				else check_Ground_Successor(&open, data, closed, n_closed, successor, wall_col, floor_col, prop_col, room_w, dx, dy);
 			}
 			++successor.x;
 		}
 		if (curr_node.x < room_w - 1)
 		{
 			++successor.x;
-			if (wall_col[successor.y * room_w + successor.x] < 0 && floor_col[successor.y * room_w + successor.x] < 0)
+			if (wall_col[successor.y * room_w + successor.x] < 0 && floor_col[successor.y * room_w + successor.x] % 8 != 2 &&
+				(prop_col[successor.y * room_w + successor.x] % 8 != 3 || prop_col[successor.y * room_w + successor.x] % 8 != 4))
 			{
 				successor.h_cost = abs(successor.x - dx) + abs(successor.y - dy);
-				//printf("Success Position: %d %d %d\n", curr_node.x, curr_node.y, curr_node.h_cost);
 				if (successor.h_cost == 0)
 				{
 					data[successor.y * room_w + successor.x].px = successor.px;
@@ -638,17 +697,17 @@ void move_To_Position(Entity_Instance* e, int* wall_col, int* floor_col, int roo
 					search = 0;
 					break;
 				}
-				else check_successor(&open, data, closed, n_closed, successor, wall_col, floor_col, room_w, dx, dy);
+				else check_Ground_Successor(&open, data, closed, n_closed, successor, wall_col, floor_col, prop_col, room_w, dx, dy);
 			}
 			--successor.x;
 		}
 		if (curr_node.y > 0)
 		{
 			--successor.y;
-			if (wall_col[successor.y * room_w + successor.x] < 0 && floor_col[successor.y * room_w + successor.x] < 0)
+			if (wall_col[successor.y * room_w + successor.x] < 0 && floor_col[successor.y * room_w + successor.x] % 8 != 2 &&
+				(prop_col[successor.y * room_w + successor.x] % 8 != 3 || prop_col[successor.y * room_w + successor.x] % 8 != 4))
 			{
 				successor.h_cost = abs(successor.x - dx) + abs(successor.y - dy);
-				//printf("Success Position: %d %d %d\n", curr_node.x, curr_node.y, curr_node.h_cost);
 				if (successor.h_cost == 0)
 				{
 					data[successor.y * room_w + successor.x].px = successor.px;
@@ -656,17 +715,17 @@ void move_To_Position(Entity_Instance* e, int* wall_col, int* floor_col, int roo
 					search = 0;
 					break;
 				}
-				else check_successor(&open, data, closed, n_closed, successor, wall_col, floor_col, room_w, dx, dy);
+				else check_Ground_Successor(&open, data, closed, n_closed, successor, wall_col, floor_col, prop_col, room_w, dx, dy);
 			}
 			++successor.y;
 		}
 		if (curr_node.y < room_h - 1)
 		{
 			++successor.y;
-			if (wall_col[successor.y * room_w + successor.x] < 0 && floor_col[successor.y * room_w + successor.x] < 0)
+			if (wall_col[successor.y * room_w + successor.x] < 0 && floor_col[successor.y * room_w + successor.x] % 8 != 2 &&
+				(prop_col[successor.y * room_w + successor.x] % 8 != 3 || prop_col[successor.y * room_w + successor.x] % 8 != 4))
 			{
 				successor.h_cost = abs(successor.x - dx) + abs(successor.y - dy);
-				//printf("Success Position: %d %d %d\n", curr_node.x, curr_node.y, curr_node.h_cost);
 				if (successor.h_cost == 0)
 				{
 					data[successor.y * room_w + successor.x].px = successor.px;
@@ -674,7 +733,7 @@ void move_To_Position(Entity_Instance* e, int* wall_col, int* floor_col, int roo
 					search = 0;
 					break;
 				}
-				else check_successor(&open, data, closed, n_closed, successor, wall_col, floor_col, room_w, dx, dy);
+				else check_Ground_Successor(&open, data, closed, n_closed, successor, wall_col, floor_col, prop_col, room_w, dx, dy);
 			}
 			--successor.y;
 		}
@@ -683,7 +742,6 @@ void move_To_Position(Entity_Instance* e, int* wall_col, int* floor_col, int roo
 	}
 
 	//get direction
-	//printf("End found\n");
 	curr_id = dy * room_w + dx;
 	int start_id = ey * room_w + ex;
 	int n_steps = 0;
@@ -696,7 +754,6 @@ void move_To_Position(Entity_Instance* e, int* wall_col, int* floor_col, int roo
 		else if (data[curr_id].px - data[curr_id].x > 0) direction = LEFT;
 		else if (data[curr_id].py - data[curr_id].y > 0) direction = UP;
 		else direction = DOWN;
-		//printf("%d %d %d\n", data[curr_id].x, data[curr_id].y, direction);
 		curr_id = data[curr_id].py * room_w + data[curr_id].px;
 	}
 
@@ -705,8 +762,6 @@ void move_To_Position(Entity_Instance* e, int* wall_col, int* floor_col, int roo
 	free(data);
 	free(closed);
 
-	//printf("Before: %f %f\n", e->x, e->y);
-	//printf("Assumed: %d %d\n", ex, ey);
 	//move once direction known
 	e->state = WALK;
 	e->direction = direction;
@@ -717,7 +772,8 @@ void move_To_Position(Entity_Instance* e, int* wall_col, int* floor_col, int roo
 	}
 	else if (direction == LEFT)
 	{
-		if ((float)ey != e->y && (wall_col[(ey+1) * room_w + ex - 1] >= 0 || floor_col[(ey+1) * room_w + ex - 1] >= 0))
+		if ((float)ey != e->y && (wall_col[(ey+1) * room_w + ex - 1] >= 0 || floor_col[(ey+1) * room_w + ex - 1] % 9 == 2 ||
+			prop_col[(ey + 1) * room_w + ex - 1] % 9 == 3 || prop_col[(ey + 1) * room_w + ex - 1] % 9 == 4))
 		{
 			e->direction = UP;
 			e->y -= e->key->speed;
@@ -726,7 +782,8 @@ void move_To_Position(Entity_Instance* e, int* wall_col, int* floor_col, int roo
 	}
 	else if (direction == RIGHT)
 	{
-		if ((float)ey != e->y && (wall_col[(ey + 1) * room_w + ex + 1] >= 0 || floor_col[(ey + 1) * room_w + ex + 1] >= 0))
+		if ((float)ey != e->y && (wall_col[(ey + 1) * room_w + ex - 1] >= 0 || floor_col[(ey + 1) * room_w + ex - 1] % 9 == 2 ||
+			prop_col[(ey + 1) * room_w + ex - 1] % 9 == 3 || prop_col[(ey + 1) * room_w + ex - 1] % 9 == 4))
 		{
 			e->direction = UP;
 			e->y -= e->key->speed;
@@ -735,8 +792,254 @@ void move_To_Position(Entity_Instance* e, int* wall_col, int* floor_col, int roo
 	}
 	else if (direction == DOWN) e->y += e->key->speed;
 	else if (direction == UP) e->y -= e->key->speed;
+}
 
-	//printf("After: %f %f\n", e->x, e->y);
+void check_Air_Successor(Heap* heap, Node* data, int* closed, int n_closed, const Node successor, int* wall_col, int* prop_col, int room_w, int dx, int dy)
+{
+	int succ_id = successor.y * room_w + successor.x;
+	if (wall_col[succ_id] < 0 &&
+		(prop_col[succ_id] % 8 != 4 || prop_col[succ_id] % 8 != 5))
+	{
+		int skip = 0;
+		for (int i = 0; i < heap->n_data; ++i)
+		{
+			if (heap->id[i] == succ_id)
+			{
+				if (data[heap->id[i]].h_cost < successor.h_cost && data[heap->id[i]].h_cost != -1)
+				{
+					skip = 1;
+				}
+				i = heap->n_data;
+			}
+		}
+		if (skip == 0)
+		{
+			for (int i = 0; i < n_closed; ++i)
+			{
+				if (closed[i] == succ_id)
+				{
+					if (data[closed[i]].h_cost <= successor.h_cost && data[closed[i]].h_cost != -1)
+					{
+						skip = 1;
+					}
+					i = n_closed;
+				}
+			}
+			if (skip == 0)
+			{
+				data[succ_id].px = successor.px;
+				data[succ_id].py = successor.py;
+				add_To_Heap(heap, data, succ_id, room_w);
+			}
+		}
+	}
+
+}
+
+void move_Air_Entity(Entity_Instance* e, int* wall_col, int* prop_col, int room_w, int room_h, float dest_x, float dest_y)
+{
+	int ex = (int)e->x;
+	int ey = (int)e->y;
+	if ((float)ex != e->x)
+	{
+		if (fabs((float)ex - e->x) < e->key->speed - 0.01f)
+		{
+			e->x = (float)ex;
+		}
+		else if (fabs((float)ex - e->x) > 1.01f - e->key->speed)
+		{
+			e->x = (float)ex + 1.0f;
+		}
+		else
+		{
+			if (e->direction == LEFT) e->x -= e->key->speed;
+			else e->x += e->key->speed;
+			return;
+		}
+	}
+	else if ((float)ey != e->y)
+	{
+		if (fabs((float)ey - e->y) < e->key->speed - 0.01f)
+		{
+			e->y = (float)ey;
+		}
+		else if (fabs((float)ey - e->y) > 1.01f - e->key->speed)
+		{
+			e->y = (float)ey + 1.0f;
+		}
+		else
+		{
+			if (e->direction == UP) e->y -= e->key->speed;
+			else e->y += e->key->speed;
+			return;
+		}
+	}
+	int dx = (int)(dest_x + 0.5);
+	int dy = (int)(dest_y + 0.5);
+	int direction = 0;
+
+	//a* to get direction
+	Node* data = (Node*)calloc(room_w * room_h, sizeof(Node));
+	for (int i = 0; i < room_w * room_h; ++i)
+	{
+		data[i].x = i % room_w;
+		data[i].y = i / room_w;
+		data[i].h_cost = abs(data[i].x - dx) + abs(data[i].y - dy);
+	}
+
+	Heap open = { 0 };
+	open.max_data = room_w * room_h;
+	open.id = (int*)calloc(open.max_data, sizeof(int));
+
+	int* closed = (int*)calloc(open.max_data, sizeof(int));
+	int n_closed = 0;
+
+	int curr_id = ey * room_w + ex;
+	Node curr_node = { 0 };
+	curr_node.x = ex;
+	curr_node.y = ey;
+	curr_node.h_cost = abs(ex - dx) + abs(ey - dy);
+	add_To_Heap(&open, data, curr_id, room_w);
+
+	Node successor = { 0 };
+
+	int search = 1;
+
+	//find path
+	while (open.n_data > 0 && search == 1)
+	{
+		curr_id = get_From_Heap(&open, data);
+		curr_node = data[curr_id];
+		successor = curr_node;
+		successor.px = curr_node.x;
+		successor.py = curr_node.y;
+		if (curr_node.x > 0)
+		{
+			--successor.x;
+			if (wall_col[successor.y * room_w + successor.x] < 0 &&
+				(prop_col[successor.y * room_w + successor.x] % 8 != 4 || prop_col[successor.y * room_w + successor.x] % 8 != 5))
+			{
+				successor.h_cost = abs(successor.x - dx) + abs(successor.y - dy);
+				if (successor.h_cost == 0)
+				{
+					data[successor.y * room_w + successor.x].px = successor.px;
+					data[successor.y * room_w + successor.x].py = successor.py;
+					search = 0;
+					break;
+				}
+				else check_Air_Successor(&open, data, closed, n_closed, successor, wall_col, prop_col, room_w, dx, dy);
+			}
+			++successor.x;
+		}
+		if (curr_node.x < room_w - 1)
+		{
+			++successor.x;
+			if (wall_col[successor.y * room_w + successor.x] < 0 &&
+				(prop_col[successor.y * room_w + successor.x] % 8 != 4 || prop_col[successor.y * room_w + successor.x] % 8 != 5))
+			{
+				successor.h_cost = abs(successor.x - dx) + abs(successor.y - dy);
+				if (successor.h_cost == 0)
+				{
+					data[successor.y * room_w + successor.x].px = successor.px;
+					data[successor.y * room_w + successor.x].py = successor.py;
+					search = 0;
+					break;
+				}
+				else check_Air_Successor(&open, data, closed, n_closed, successor, wall_col, prop_col, room_w, dx, dy);
+			}
+			--successor.x;
+		}
+		if (curr_node.y > 0)
+		{
+			--successor.y;
+			if (wall_col[successor.y * room_w + successor.x] < 0 &&
+				(prop_col[successor.y * room_w + successor.x] % 8 != 4 || prop_col[successor.y * room_w + successor.x] % 8 != 5))
+			{
+				successor.h_cost = abs(successor.x - dx) + abs(successor.y - dy);
+				if (successor.h_cost == 0)
+				{
+					data[successor.y * room_w + successor.x].px = successor.px;
+					data[successor.y * room_w + successor.x].py = successor.py;
+					search = 0;
+					break;
+				}
+				else check_Air_Successor(&open, data, closed, n_closed, successor, wall_col, prop_col, room_w, dx, dy);
+			}
+			++successor.y;
+		}
+		if (curr_node.y < room_h - 1)
+		{
+			++successor.y;
+			if (wall_col[successor.y * room_w + successor.x] < 0 &&
+				(prop_col[successor.y * room_w + successor.x] % 8 != 4 || prop_col[successor.y * room_w + successor.x] % 8 != 5))
+			{
+				successor.h_cost = abs(successor.x - dx) + abs(successor.y - dy);
+				if (successor.h_cost == 0)
+				{
+					data[successor.y * room_w + successor.x].px = successor.px;
+					data[successor.y * room_w + successor.x].py = successor.py;
+					search = 0;
+					break;
+				}
+				else check_Air_Successor(&open, data, closed, n_closed, successor, wall_col, prop_col, room_w, dx, dy);
+			}
+			--successor.y;
+		}
+		closed[n_closed] = curr_id;
+		++n_closed;
+	}
+
+	//get direction
+	curr_id = dy * room_w + dx;
+	int start_id = ey * room_w + ex;
+	int n_steps = 0;
+	while (curr_id != start_id)
+	{
+		++n_steps;
+		if (data[curr_id].px == 0 || data[curr_id].py == 0) break;
+
+		if (data[curr_id].px - data[curr_id].x < 0) direction = RIGHT;
+		else if (data[curr_id].px - data[curr_id].x > 0) direction = LEFT;
+		else if (data[curr_id].py - data[curr_id].y > 0) direction = UP;
+		else direction = DOWN;
+		curr_id = data[curr_id].py * room_w + data[curr_id].px;
+	}
+
+	//deallocate
+	free(open.id);
+	free(data);
+	free(closed);
+
+	//move once direction known
+	e->state = WALK;
+	e->direction = direction;
+	if (n_steps <= 1)
+	{
+		Mix_PlayChannel(-1, e->key->atk_s, 0);
+		e->state = ATTACK;
+	}
+	else if (direction == LEFT)
+	{
+		if ((float)ey != e->y && (wall_col[(ey + 1) * room_w + ex - 1] >= 0 ||
+			prop_col[(ey + 1) * room_w + ex - 1] % 9 == 3 || prop_col[(ey + 1) * room_w + ex - 1] % 9 == 4))
+		{
+			e->direction = UP;
+			e->y -= e->key->speed;
+		}
+		else e->x -= e->key->speed;
+	}
+	else if (direction == RIGHT)
+	{
+		if ((float)ey != e->y && (wall_col[(ey + 1) * room_w + ex - 1] >= 0 ||
+			prop_col[(ey + 1) * room_w + ex - 1] % 9 == 3 || prop_col[(ey + 1) * room_w + ex - 1] % 9 == 4))
+		{
+			e->direction = UP;
+			e->y -= e->key->speed;
+		}
+		else e->x += e->key->speed;
+	}
+	else if (direction == DOWN) e->y += e->key->speed;
+	else if (direction == UP) e->y -= e->key->speed;
 }
 
 int check_Hit_Collision(Entity_Instance* def, const Entity_Instance atk, float atk_buffer)
@@ -828,13 +1131,1195 @@ int check_Hit_Collision(Entity_Instance* def, const Entity_Instance atk, float a
 	return 0;
 }
 
-void check_Tile_Collision(int* wall_c, int* floor_c, int room_w, Entity_Instance* e, int n_enemies)
+int AABB(float ax, float ay, float aw, float ah, float bx, float by, float bw, float bh)
+{
+	if (ax + 0.1f < bx + bw && ax + aw > bx + 0.1f && ay + 0.1f < by + bh && ay + ah > by + 0.1f) return 1;
+	return 0;
+}
+
+void correct_Tile_Collision(Entity_Instance* e, float x, float y, float w, float h)
+{
+	float nx = (e->x + 0.5f) - (x + w * 0.5f);
+	float ny = (e->y + 0.75f) - (y + h * 0.5f);
+
+	if (fabs(nx) > fabs(ny))
+	{
+		if (nx < 0)
+		{
+			e->x -= (1.0f + w) * 0.5f + nx;
+		}
+		else
+		{
+			e->x += (1.0f + w) * 0.5f - nx;
+		}
+
+		if (ny < 0) e->y -= 0.01f;
+		else e->y += 0.01f;
+	}
+	else
+	{
+		if (ny < 0)
+		{
+			e->y -= (0.5f + h) * 0.5f + ny;
+		}
+		else
+		{
+			e->y += (0.5f + h) * 0.5f - ny;
+		}
+
+		if (nx < 0) e->x -= 0.01f;
+		else e->x += 0.01f;
+	}
+}
+
+/*
+void check_Tile_Collision(int* wall_c, int* prop_c, int* floor_c, int room_w, Entity_Instance* e, int n_enemies, int n_cols)
+{
+	float ex = e->x;
+	float ey = e->y + 0.5f;
+	int tx = (int)ex;
+	int ty = (int)ey;
+	int tile_id = ty * room_w + tx;
+
+	if (wall_c[tile_id] == 0 || (wall_c[tile_id] == 1 && n_enemies > 0))
+	{
+		while (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 1.0f, 1.0f) == 1)
+		{
+			correct_Tile_Collision(e, (float)tx, (float)ty, 1.0f, 1.0f);
+			ex = e->x;
+			ey = e->y + 0.5f;
+		}
+		tx = (int)ex;
+		ty = (int)ey;
+	}
+	if (ex != (float)(int)ex)
+	{
+		++tx;
+		++tile_id;
+		if (wall_c[tile_id] == 0 || (wall_c[tile_id] == 1 && n_enemies > 0))
+		{
+			while (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 1.0f, 1.0f) == 1)
+			{
+				correct_Tile_Collision(e, (float)tx, (float)ty, 1.0f, 1.0f);
+				ex = e->x;
+				ey = e->y + 0.5f;
+			}
+			tx = (int)ex + 1;
+			ty = (int)ey;
+		}
+		--tx;
+		--tile_id;
+	}
+	if (ey != (float)(int)(ey + 0.5f))
+	{
+		++ty;
+		tile_id += room_w;
+		if (wall_c[tile_id] == 0 || (wall_c[tile_id] == 1 && n_enemies > 0))
+		{
+			while (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 1.0f, 1.0f) == 1)
+			{
+				correct_Tile_Collision(e, (float)tx, (float)ty, 1.0f, 1.0f);
+				ex = e->x;
+				ey = e->y + 0.5f;
+			}
+			tx = (int)ex;
+			ty = (int)ey + 1;
+		}
+		if (ex != (float)(int)ex)
+		{
+			++tx;
+			++tile_id;
+			if (wall_c[tile_id] == 0 || (wall_c[tile_id] == 1 && n_enemies > 0))
+			{
+				while (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 1.0f, 1.0f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx, (float)ty, 1.0f, 1.0f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex + 1;
+				ty = (int)ey + 1;
+			}
+			--tx;
+			--tile_id;
+		}
+		--ty;
+		tile_id -= room_w;
+	}
+
+	if (prop_c[tile_id] >= 0)
+	{
+		//printf("Greater TL Collision detected! %d\n", prop_c[tile_id] / n_cols);
+		if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 18)
+		{
+			while (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 0.5f, 0.5f) == 1)
+			{
+				correct_Tile_Collision(e, (float)tx, (float)ty, 0.5f, 0.5f);
+				ex = e->x;
+				ey = e->y + 0.5f;
+			}
+			tx = (int)ex;
+			ty = (int)ey;
+		}
+		if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 20)
+		{
+			while (AABB(ex, ey, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f) == 1)
+			{
+				correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f);
+				ex = e->x;
+				ey = e->y + 0.5f;
+			}
+			tx = (int)ex;
+			ty = (int)ey;
+		}
+		if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 22)
+		{
+			while (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
+			{
+				correct_Tile_Collision(e, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f);
+				ex = e->x;
+				ey = e->y + 0.5f;
+			}
+			tx = (int)ex;
+			ty = (int)ey;
+		}
+		if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 24)
+		{
+			while (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
+			{
+				correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f);
+				ex = e->x;
+				ey = e->y + 0.5f;
+			}
+			tx = (int)ex;
+			ty = (int)ey;
+		}
+	}
+	if (ex != (float)(int)ex)
+	{
+		++tx;
+		++tile_id;
+		if (prop_c[tile_id] >= 0)
+		{
+			//printf("Greater TR Collision detected! %d\n", prop_c[tile_id] / n_cols);
+			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 18)
+			{
+				while (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 0.5f, 0.5f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx, (float)ty, 0.5f, 0.5f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex + 1;
+				ty = (int)ey;
+			}
+			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 20)
+			{
+				while (AABB(ex, ey, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex + 1;
+				ty = (int)ey;
+			}
+			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 22)
+			{
+				while (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex + 1;
+				ty = (int)ey;
+			}
+			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 24)
+			{
+				while (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex + 1;
+				ty = (int)ey;
+			}
+		}
+		--tx;
+		--tile_id;
+	}
+	if ((int)ey != (int)(ey + 0.5f))
+	{
+		++ty;
+		tile_id += room_w;
+		if (prop_c[tile_id] >= 0)
+		{
+			//printf("Greater BL Collision detected! %d\n", prop_c[tile_id] / n_cols);
+			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 18)
+			{
+				while (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 0.5f, 0.5f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx, (float)ty, 0.5f, 0.5f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex;
+				ty = (int)ey + 1;
+			}
+			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 20)
+			{
+				while (AABB(ex, ey, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex;
+				ty = (int)ey + 1;
+			}
+			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 22)
+			{
+				while (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex;
+				ty = (int)ey + 1;
+			}
+			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 24)
+			{
+				while (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex;
+				ty = (int)ey + 1;
+			}
+		}
+		if (ex != (float)(int)ex)
+		{
+			++tx;
+			++tile_id;
+			if (prop_c[tile_id] >= 0)
+			{
+				//printf("Greater BR Collision detected! %d\n", prop_c[tile_id] / n_cols);
+				if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 18)
+				{
+					while (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 0.5f, 0.5f) == 1)
+					{
+						correct_Tile_Collision(e, (float)tx, (float)ty, 0.5f, 0.5f);
+						ex = e->x;
+						ey = e->y + 0.5f;
+					}
+					tx = (int)ex + 1;
+					ty = (int)ey + 1;
+				}
+				if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 20)
+				{
+					while (AABB(ex, ey, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f) == 1)
+					{
+						correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f);
+						ex = e->x;
+						ey = e->y + 0.5f;
+					}
+					tx = (int)ex + 1;
+					ty = (int)ey + 1;
+				}
+				if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 22)
+				{
+					while (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
+					{
+						correct_Tile_Collision(e, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f);
+						ex = e->x;
+						ey = e->y + 0.5f;
+					}
+					tx = (int)ex + 1;
+					ty = (int)ey + 1;
+				}
+				if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 24)
+				{
+					while (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
+					{
+						correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f);
+						ex = e->x;
+						ey = e->y + 0.5f;
+					}
+					tx = (int)ex + 1;
+					ty = (int)ey + 1;
+				}
+			}
+			--tx;
+			--tile_id;
+		}
+		--ty;
+		tile_id -= room_w;
+	}
+}
+*/
+
+void check_Ground_Collision(int* wall_c, int* prop_c, int* floor_c, int room_w, Entity_Instance* e, int n_enemies, int n_cols)
+{
+	float ex = e->x;
+	float ey = e->y + 0.5f;
+	int tx = (int)ex;
+	int ty = (int)ey;
+	int tile_id = ty * room_w + tx;
+
+	if (wall_c[tile_id] == 0 || (wall_c[tile_id] == 1 && n_enemies > 0))
+	{
+		if (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 1.0f, 1.0f) == 1)
+		{
+			correct_Tile_Collision(e, (float)tx, (float)ty, 1.0f, 1.0f);
+			ex = e->x;
+			ey = e->y + 0.5f;
+		}
+		tx = (int)ex;
+		ty = (int)ey;
+	}
+	if (ex != (float)(int)ex)
+	{
+		++tx;
+		++tile_id;
+		if (wall_c[tile_id] == 0 || (wall_c[tile_id] == 1 && n_enemies > 0))
+		{
+			if (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 1.0f, 1.0f) == 1)
+			{
+				correct_Tile_Collision(e, (float)tx, (float)ty, 1.0f, 1.0f);
+				ex = e->x;
+				ey = e->y + 0.5f;
+			}
+			tx = (int)ex + 1;
+			ty = (int)ey;
+		}
+		--tx;
+		--tile_id;
+	}
+	if (ey != (float)(int)(ey + 0.5f))
+	{
+		++ty;
+		tile_id += room_w;
+		if (wall_c[tile_id] == 0 || (wall_c[tile_id] == 1 && n_enemies > 0))
+		{
+			if (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 1.0f, 1.0f) == 1)
+			{
+				correct_Tile_Collision(e, (float)tx, (float)ty, 1.0f, 1.0f);
+				ex = e->x;
+				ey = e->y + 0.5f;
+			}
+			tx = (int)ex;
+			ty = (int)ey + 1;
+		}
+		if (ex != (float)(int)ex)
+		{
+			++tx;
+			++tile_id;
+			if (wall_c[tile_id] == 0 || (wall_c[tile_id] == 1 && n_enemies > 0))
+			{
+				if (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 1.0f, 1.0f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx, (float)ty, 1.0f, 1.0f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex + 1;
+				ty = (int)ey + 1;
+			}
+			--tx;
+			--tile_id;
+		}
+		--ty;
+		tile_id -= room_w;
+	}
+
+	if (prop_c[tile_id] % n_cols == 3 || prop_c[tile_id] % n_cols == 4)
+	{
+		if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 18)
+		{
+			if (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 0.5f, 0.5f) == 1)
+			{
+				correct_Tile_Collision(e, (float)tx, (float)ty, 0.5f, 0.5f);
+				ex = e->x;
+				ey = e->y + 0.5f;
+			}
+			tx = (int)ex;
+			ty = (int)ey;
+		}
+		if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 20)
+		{
+			if (AABB(ex, ey, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f) == 1)
+			{
+				correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f);
+				ex = e->x;
+				ey = e->y + 0.5f;
+			}
+			tx = (int)ex;
+			ty = (int)ey;
+		}
+		if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 22)
+		{
+			if (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
+			{
+				correct_Tile_Collision(e, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f);
+				ex = e->x;
+				ey = e->y + 0.5f;
+			}
+			tx = (int)ex;
+			ty = (int)ey;
+		}
+		if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 24)
+		{
+			if (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
+			{
+				correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f);
+				ex = e->x;
+				ey = e->y + 0.5f;
+			}
+			tx = (int)ex;
+			ty = (int)ey;
+		}
+	}
+	if (ex != (float)(int)ex)
+	{
+		++tx;
+		++tile_id;
+		if (prop_c[tile_id] % n_cols == 3 || prop_c[tile_id] % n_cols == 4)
+		{
+			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 18)
+			{
+				if (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 0.5f, 0.5f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx, (float)ty, 0.5f, 0.5f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex + 1;
+				ty = (int)ey;
+			}
+			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 20)
+			{
+				if (AABB(ex, ey, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex + 1;
+				ty = (int)ey;
+			}
+			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 22)
+			{
+				if (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex + 1;
+				ty = (int)ey;
+			}
+			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 24)
+			{
+				if (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex + 1;
+				ty = (int)ey;
+			}
+		}
+		--tx;
+		--tile_id;
+	}
+	if ((int)ey != (int)(ey + 0.5f))
+	{
+		++ty;
+		tile_id += room_w;
+		if (prop_c[tile_id] % n_cols == 3 || prop_c[tile_id] % n_cols == 4)
+		{
+			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 18)
+			{
+				if (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 0.5f, 0.5f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx, (float)ty, 0.5f, 0.5f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex;
+				ty = (int)ey + 1;
+			}
+			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 20)
+			{
+				if (AABB(ex, ey, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex;
+				ty = (int)ey + 1;
+			}
+			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 22)
+			{
+				if (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex;
+				ty = (int)ey + 1;
+			}
+			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 24)
+			{
+				if (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex;
+				ty = (int)ey + 1;
+			}
+		}
+		if (ex != (float)(int)ex)
+		{
+			++tx;
+			++tile_id;
+			if (prop_c[tile_id] % n_cols == 3 || prop_c[tile_id] % n_cols == 4)
+			{
+				if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 18)
+				{
+					if (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 0.5f, 0.5f) == 1)
+					{
+						correct_Tile_Collision(e, (float)tx, (float)ty, 0.5f, 0.5f);
+						ex = e->x;
+						ey = e->y + 0.5f;
+					}
+					tx = (int)ex + 1;
+					ty = (int)ey + 1;
+				}
+				if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 20)
+				{
+					if (AABB(ex, ey, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f) == 1)
+					{
+						correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f);
+						ex = e->x;
+						ey = e->y + 0.5f;
+					}
+					tx = (int)ex + 1;
+					ty = (int)ey + 1;
+				}
+				if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 22)
+				{
+					if (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
+					{
+						correct_Tile_Collision(e, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f);
+						ex = e->x;
+						ey = e->y + 0.5f;
+					}
+					tx = (int)ex + 1;
+					ty = (int)ey + 1;
+				}
+				if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 24)
+				{
+					if (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
+					{
+						correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f);
+						ex = e->x;
+						ey = e->y + 0.5f;
+					}
+					tx = (int)ex + 1;
+					ty = (int)ey + 1;
+				}
+			}
+			--tx;
+			--tile_id;
+		}
+		--ty;
+		tile_id -= room_w;
+	}
+
+	if (floor_c[tile_id] % n_cols == 2 && (wall_c[tile_id] != 1 || n_enemies > 0))
+	{
+		if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 2 || floor_c[tile_id] / n_cols == 6 || floor_c[tile_id] / n_cols == 8 || floor_c[tile_id] / n_cols == 12 || floor_c[tile_id] / n_cols == 14 || floor_c[tile_id] / n_cols == 18)
+		{
+			if (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 0.5f, 0.5f) == 1)
+			{
+				correct_Tile_Collision(e, (float)tx, (float)ty, 0.5f, 0.5f);
+				ex = e->x;
+				ey = e->y + 0.5f;
+			}
+			tx = (int)ex;
+			ty = (int)ey;
+		}
+		if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 2 || floor_c[tile_id] / n_cols == 4 || floor_c[tile_id] / n_cols == 8 || floor_c[tile_id] / n_cols == 10 || floor_c[tile_id] / n_cols == 14 || floor_c[tile_id] / n_cols == 20)
+		{
+			if (AABB(ex, ey, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f) == 1)
+			{
+				correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f);
+				ex = e->x;
+				ey = e->y + 0.5f;
+			}
+			tx = (int)ex;
+			ty = (int)ey;
+		}
+		if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 4 || floor_c[tile_id] / n_cols == 6 || floor_c[tile_id] / n_cols == 8 || floor_c[tile_id] / n_cols == 12 || floor_c[tile_id] / n_cols == 16 || floor_c[tile_id] / n_cols == 22)
+		{
+			if (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
+			{
+				correct_Tile_Collision(e, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f);
+				ex = e->x;
+				ey = e->y + 0.5f;
+			}
+			tx = (int)ex;
+			ty = (int)ey;
+		}
+		if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 2 || floor_c[tile_id] / n_cols == 4 || floor_c[tile_id] / n_cols == 6 || floor_c[tile_id] / n_cols == 10 || floor_c[tile_id] / n_cols == 16 || floor_c[tile_id] / n_cols == 24)
+		{
+			if (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
+			{
+				correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f);
+				ex = e->x;
+				ey = e->y + 0.5f;
+			}
+			tx = (int)ex;
+			ty = (int)ey;
+		}
+	}
+	if (ex != (float)(int)ex)
+	{
+		++tx;
+		++tile_id;
+		if (floor_c[tile_id] % n_cols == 2 && (wall_c[tile_id] != 1 || n_enemies > 0))
+		{
+			if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 2 || floor_c[tile_id] / n_cols == 6 || floor_c[tile_id] / n_cols == 8 || floor_c[tile_id] / n_cols == 12 || floor_c[tile_id] / n_cols == 14 || floor_c[tile_id] / n_cols == 18)
+			{
+				if (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 0.5f, 0.5f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx, (float)ty, 0.5f, 0.5f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex + 1;
+				ty = (int)ey;
+			}
+			if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 2 || floor_c[tile_id] / n_cols == 4 || floor_c[tile_id] / n_cols == 8 || floor_c[tile_id] / n_cols == 10 || floor_c[tile_id] / n_cols == 14 || floor_c[tile_id] / n_cols == 20)
+			{
+				if (AABB(ex, ey, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex + 1;
+				ty = (int)ey;
+			}
+			if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 4 || floor_c[tile_id] / n_cols == 6 || floor_c[tile_id] / n_cols == 8 || floor_c[tile_id] / n_cols == 12 || floor_c[tile_id] / n_cols == 16 || floor_c[tile_id] / n_cols == 22)
+			{
+				if (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex + 1;
+				ty = (int)ey;
+			}
+			if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 2 || floor_c[tile_id] / n_cols == 4 || floor_c[tile_id] / n_cols == 6 || floor_c[tile_id] / n_cols == 10 || floor_c[tile_id] / n_cols == 16 || floor_c[tile_id] / n_cols == 24)
+			{
+				if (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex + 1;
+				ty = (int)ey;
+			}
+		}
+		--tx;
+		--tile_id;
+	}
+	if ((int)ey != (int)(ey + 0.5f))
+	{
+		++ty;
+		tile_id += room_w;
+		if (floor_c[tile_id] % n_cols == 2 && (wall_c[tile_id] != 1 || n_enemies > 0))
+		{
+			if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 2 || floor_c[tile_id] / n_cols == 6 || floor_c[tile_id] / n_cols == 8 || floor_c[tile_id] / n_cols == 12 || floor_c[tile_id] / n_cols == 14 || floor_c[tile_id] / n_cols == 18)
+			{
+				if (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 0.5f, 0.5f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx, (float)ty, 0.5f, 0.5f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex;
+				ty = (int)ey + 1;
+			}
+			if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 2 || floor_c[tile_id] / n_cols == 4 || floor_c[tile_id] / n_cols == 8 || floor_c[tile_id] / n_cols == 10 || floor_c[tile_id] / n_cols == 14 || floor_c[tile_id] / n_cols == 20)
+			{
+				if (AABB(ex, ey, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex;
+				ty = (int)ey + 1;
+			}
+			if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 4 || floor_c[tile_id] / n_cols == 6 || floor_c[tile_id] / n_cols == 8 || floor_c[tile_id] / n_cols == 12 || floor_c[tile_id] / n_cols == 16 || floor_c[tile_id] / n_cols == 22)
+			{
+				if (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex;
+				ty = (int)ey + 1;
+			}
+			if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 2 || floor_c[tile_id] / n_cols == 4 || floor_c[tile_id] / n_cols == 6 || floor_c[tile_id] / n_cols == 10 || floor_c[tile_id] / n_cols == 16 || floor_c[tile_id] / n_cols == 24)
+			{
+				if (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex;
+				ty = (int)ey + 1;
+			}
+		}
+		if (ex != (float)(int)ex)
+		{
+			++tx;
+			++tile_id;
+			if (floor_c[tile_id] % n_cols == 2 && (wall_c[tile_id] != 1 || n_enemies > 0))
+			{
+				if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 2 || floor_c[tile_id] / n_cols == 6 || floor_c[tile_id] / n_cols == 8 || floor_c[tile_id] / n_cols == 12 || floor_c[tile_id] / n_cols == 14 || floor_c[tile_id] / n_cols == 18)
+				{
+					if (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 0.5f, 0.5f) == 1)
+					{
+						correct_Tile_Collision(e, (float)tx, (float)ty, 0.5f, 0.5f);
+						ex = e->x;
+						ey = e->y + 0.5f;
+					}
+					tx = (int)ex + 1;
+					ty = (int)ey + 1;
+				}
+				if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 2 || floor_c[tile_id] / n_cols == 4 || floor_c[tile_id] / n_cols == 8 || floor_c[tile_id] / n_cols == 10 || floor_c[tile_id] / n_cols == 14 || floor_c[tile_id] / n_cols == 20)
+				{
+					if (AABB(ex, ey, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f) == 1)
+					{
+						correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f);
+						ex = e->x;
+						ey = e->y + 0.5f;
+					}
+					tx = (int)ex + 1;
+					ty = (int)ey + 1;
+				}
+				if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 4 || floor_c[tile_id] / n_cols == 6 || floor_c[tile_id] / n_cols == 8 || floor_c[tile_id] / n_cols == 12 || floor_c[tile_id] / n_cols == 16 || floor_c[tile_id] / n_cols == 22)
+				{
+					if (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
+					{
+						correct_Tile_Collision(e, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f);
+						ex = e->x;
+						ey = e->y + 0.5f;
+					}
+					tx = (int)ex + 1;
+					ty = (int)ey + 1;
+				}
+				if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 2 || floor_c[tile_id] / n_cols == 4 || floor_c[tile_id] / n_cols == 6 || floor_c[tile_id] / n_cols == 10 || floor_c[tile_id] / n_cols == 16 || floor_c[tile_id] / n_cols == 24)
+				{
+					if (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
+					{
+						correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f);
+						ex = e->x;
+						ey = e->y + 0.5f;
+					}
+					tx = (int)ex + 1;
+					ty = (int)ey + 1;
+				}
+			}
+			--tx;
+			--tile_id;
+		}
+		--ty;
+		tile_id -= room_w;
+	}
+}
+
+void check_Air_Collision(int* wall_c, int* prop_c, int room_w, Entity_Instance* e, int n_enemies, int n_cols)
+{
+	float ex = e->x;
+	float ey = e->y + 0.5f;
+	int tx = (int)ex;
+	int ty = (int)ey;
+	int tile_id = ty * room_w + tx;
+
+	if (wall_c[tile_id] == 0 || (wall_c[tile_id] == 1 && n_enemies > 0))
+	{
+		while (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 1.0f, 1.0f) == 1)
+		{
+			correct_Tile_Collision(e, (float)tx, (float)ty, 1.0f, 1.0f);
+			ex = e->x;
+			ey = e->y + 0.5f;
+		}
+		tx = (int)ex;
+		ty = (int)ey;
+	}
+	if (ex != (float)(int)ex)
+	{
+		++tx;
+		++tile_id;
+		if (wall_c[tile_id] == 0 || (wall_c[tile_id] == 1 && n_enemies > 0))
+		{
+			while (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 1.0f, 1.0f) == 1)
+			{
+				correct_Tile_Collision(e, (float)tx, (float)ty, 1.0f, 1.0f);
+				ex = e->x;
+				ey = e->y + 0.5f;
+			}
+			tx = (int)ex + 1;
+			ty = (int)ey;
+		}
+		--tx;
+		--tile_id;
+	}
+	if (ey != (float)(int)(ey + 0.5f))
+	{
+		++ty;
+		tile_id += room_w;
+		if (wall_c[tile_id] == 0 || (wall_c[tile_id] == 1 && n_enemies > 0))
+		{
+			while (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 1.0f, 1.0f) == 1)
+			{
+				correct_Tile_Collision(e, (float)tx, (float)ty, 1.0f, 1.0f);
+				ex = e->x;
+				ey = e->y + 0.5f;
+			}
+			tx = (int)ex;
+			ty = (int)ey + 1;
+		}
+		if (ex != (float)(int)ex)
+		{
+			++tx;
+			++tile_id;
+			if (wall_c[tile_id] == 0 || (wall_c[tile_id] == 1 && n_enemies > 0))
+			{
+				while (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 1.0f, 1.0f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx, (float)ty, 1.0f, 1.0f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex + 1;
+				ty = (int)ey + 1;
+			}
+			--tx;
+			--tile_id;
+		}
+		--ty;
+		tile_id -= room_w;
+	}
+
+	if (prop_c[tile_id] % n_cols == 5 || prop_c[tile_id] % n_cols == 4)
+	{
+		//printf("Greater TL Collision detected! %d\n", prop_c[tile_id] / n_cols);
+		if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 18)
+		{
+			while (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 0.5f, 0.5f) == 1)
+			{
+				correct_Tile_Collision(e, (float)tx, (float)ty, 0.5f, 0.5f);
+				ex = e->x;
+				ey = e->y + 0.5f;
+			}
+			tx = (int)ex;
+			ty = (int)ey;
+		}
+		if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 20)
+		{
+			while (AABB(ex, ey, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f) == 1)
+			{
+				correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f);
+				ex = e->x;
+				ey = e->y + 0.5f;
+			}
+			tx = (int)ex;
+			ty = (int)ey;
+		}
+		if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 22)
+		{
+			while (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
+			{
+				correct_Tile_Collision(e, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f);
+				ex = e->x;
+				ey = e->y + 0.5f;
+			}
+			tx = (int)ex;
+			ty = (int)ey;
+		}
+		if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 24)
+		{
+			while (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
+			{
+				correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f);
+				ex = e->x;
+				ey = e->y + 0.5f;
+			}
+			tx = (int)ex;
+			ty = (int)ey;
+		}
+	}
+	if (ex != (float)(int)ex)
+	{
+		++tx;
+		++tile_id;
+		if (prop_c[tile_id] % n_cols == 5 || prop_c[tile_id] % n_cols == 4)
+		{
+			//printf("Greater TR Collision detected! %d\n", prop_c[tile_id] / n_cols);
+			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 18)
+			{
+				while (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 0.5f, 0.5f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx, (float)ty, 0.5f, 0.5f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex + 1;
+				ty = (int)ey;
+			}
+			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 20)
+			{
+				while (AABB(ex, ey, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex + 1;
+				ty = (int)ey;
+			}
+			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 22)
+			{
+				while (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex + 1;
+				ty = (int)ey;
+			}
+			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 24)
+			{
+				while (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex + 1;
+				ty = (int)ey;
+			}
+		}
+		--tx;
+		--tile_id;
+	}
+	if ((int)ey != (int)(ey + 0.5f))
+	{
+		++ty;
+		tile_id += room_w;
+		if (prop_c[tile_id] % n_cols == 5 || prop_c[tile_id] % n_cols == 4)
+		{
+			//printf("Greater BL Collision detected! %d\n", prop_c[tile_id] / n_cols);
+			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 18)
+			{
+				while (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 0.5f, 0.5f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx, (float)ty, 0.5f, 0.5f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex;
+				ty = (int)ey + 1;
+			}
+			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 20)
+			{
+				while (AABB(ex, ey, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex;
+				ty = (int)ey + 1;
+			}
+			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 22)
+			{
+				while (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex;
+				ty = (int)ey + 1;
+			}
+			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 24)
+			{
+				while (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
+				{
+					correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f);
+					ex = e->x;
+					ey = e->y + 0.5f;
+				}
+				tx = (int)ex;
+				ty = (int)ey + 1;
+			}
+		}
+		if (ex != (float)(int)ex)
+		{
+			++tx;
+			++tile_id;
+			if (prop_c[tile_id] % n_cols == 5 || prop_c[tile_id] % n_cols == 4)
+			{
+				//printf("Greater BR Collision detected! %d\n", prop_c[tile_id] / n_cols);
+				if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 18)
+				{
+					while (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 0.5f, 0.5f) == 1)
+					{
+						correct_Tile_Collision(e, (float)tx, (float)ty, 0.5f, 0.5f);
+						ex = e->x;
+						ey = e->y + 0.5f;
+					}
+					tx = (int)ex + 1;
+					ty = (int)ey + 1;
+				}
+				if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 20)
+				{
+					while (AABB(ex, ey, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f) == 1)
+					{
+						correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f);
+						ex = e->x;
+						ey = e->y + 0.5f;
+					}
+					tx = (int)ex + 1;
+					ty = (int)ey + 1;
+				}
+				if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 22)
+				{
+					while (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
+					{
+						correct_Tile_Collision(e, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f);
+						ex = e->x;
+						ey = e->y + 0.5f;
+					}
+					tx = (int)ex + 1;
+					ty = (int)ey + 1;
+				}
+				if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 24)
+				{
+					while (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
+					{
+						correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f);
+						ex = e->x;
+						ey = e->y + 0.5f;
+					}
+					tx = (int)ex + 1;
+					ty = (int)ey + 1;
+				}
+			}
+			--tx;
+			--tile_id;
+		}
+		--ty;
+		tile_id -= room_w;
+	}
+}
+
+/*
+void check_Ground_Tile_Collision(int* wall_c, int* prop_c, int* floor_c, int room_w, Entity_Instance* e, int n_enemies)
+{
+	int ix = (int)e->x;
+	int iy = (int)(e->y + 0.5);
+
+	//wall collisions
+	//top left
+	if ((wall_c[iy*room_w + ix] == 0 || (n_enemies > 0 && wall_c[iy*room_w + ix] % 9 == 1)) ||
+		floor_c[iy*room_w + ix] >= 0 || prop_c[iy*room_w + ix] % 9 == 3 || prop_c[iy*room_w + ix] % 9 == 4)
+	{
+		float dif1 = e->x - (float)ix;
+		float dif2 = e->y + 0.5f - (float)iy;
+		if (dif1 > dif2) e->x = (float)(ix + 1);
+		else e->y = (float)iy + 0.5f;
+		ix = (int)e->x;
+		iy = (int)e->y;
+	}
+	if ((float)ix != e->x)
+	{
+		//top right
+		if ((wall_c[iy*room_w + ix + 1] == 0 || (n_enemies > 0 && wall_c[iy*room_w + ix + 1] % 9 == 1)) ||
+			floor_c[iy*room_w + ix + 1] >= 0 || prop_c[iy*room_w + ix + 1] % 9 == 3 || prop_c[iy*room_w + ix + 1] % 9 == 4)
+		{
+			float dif1 = (float)(ix + 1) - e->x;
+			float dif2 = e->y + 0.5f - (float)iy;
+			if (dif1 > dif2) e->x = (float)ix;
+			else e->y = (float)iy + 0.5f;
+			ix = (int)e->x;
+			iy = (int)e->y;
+		}
+	}
+	if ((float)iy != e->y)
+	{
+		iy = (int)e->y + 1;
+		//bottom left
+		if ((wall_c[iy*room_w + ix] == 0 || (n_enemies > 0 && wall_c[iy*room_w + ix] % 9 == 1)) ||
+			floor_c[iy*room_w + ix] >= 0 || prop_c[iy*room_w + ix] % 9 == 3 || prop_c[iy*room_w + ix] % 9 == 4)
+		{
+			float dif1 = e->x - (float)ix;
+			float dif2 = (float)iy - e->y;
+			if (dif1 > dif2) e->x = (float)(ix + 1);
+			else e->y = (float)(iy - 1);
+			ix = (int)e->x;
+			iy = (int)e->y;
+		}
+		if ((float)ix != e->x)
+		{
+			//bottom right
+			if ((wall_c[iy*room_w + ix + 1] == 0 || (n_enemies > 0 && wall_c[iy*room_w + ix + 1] % 9 == 1)) ||
+				floor_c[iy*room_w + ix + 1] >= 0 || prop_c[iy*room_w + ix + 1] % 9 == 3 || prop_c[iy*room_w + ix + 1] % 9 == 4)
+			{
+				float dif1 = (float)(ix + 1) - e->x;
+				float dif2 = (float)iy - e->y;
+				if (dif1 > dif2) e->x = (float)ix;
+				else e->y = (float)(iy - 1);
+				ix = (int)e->x;
+				iy = (int)e->y;
+			}
+		}
+		iy = (int)(e->y + 0.5f);
+	}
+
+}
+
+void check_Air_Tile_Collision(int* wall_c, int* prop_c, int room_w, Entity_Instance* e, int n_enemies)
 {
 	int ix = (int)e->x;
 	int iy = (int)e->y;
 
 	//top left
-	if ((wall_c[iy*room_w + ix] == 1 || (n_enemies > 0 && wall_c[iy*room_w+ix] >= 0)) || floor_c[iy*room_w + ix] >= 0)
+	if ((wall_c[iy*room_w + ix] == 0 || (n_enemies > 0 && wall_c[iy*room_w + ix] % 9 == 1)) ||
+		prop_c[iy*room_w + ix] % 9 == 4 || prop_c[iy*room_w + ix] % 9 == 5)
 	{
 		float dif1 = e->x - (float)ix;
 		float dif2 = e->y - (float)iy;
@@ -846,7 +2331,8 @@ void check_Tile_Collision(int* wall_c, int* floor_c, int room_w, Entity_Instance
 	if ((float)ix != e->x)
 	{
 		//top right
-		if ((wall_c[iy*room_w + ix + 1] == 1 || (n_enemies > 0 && wall_c[iy*room_w + ix + 1] >= 0)) || floor_c[iy*room_w + ix + 1] >= 0)
+		if ((wall_c[iy*room_w + ix + 1] == 0 || (n_enemies > 0 && wall_c[iy*room_w + ix + 1] % 9 == 1)) ||
+			prop_c[iy*room_w + ix + 1] % 9 == 4 || prop_c[iy*room_w + ix + 1] % 9 == 5)
 		{
 			float dif1 = (float)(ix + 1) - e->x;
 			float dif2 = e->y - (float)iy;
@@ -860,7 +2346,8 @@ void check_Tile_Collision(int* wall_c, int* floor_c, int room_w, Entity_Instance
 	if ((float)iy != e->y)
 	{
 		//bottom left
-		if ((wall_c[(iy + 1) * room_w + ix] == 1 || (n_enemies > 0 && wall_c[(iy + 1) * room_w + ix] >= 0)) || floor_c[(iy + 1) * room_w + ix] >= 0)
+		if ((wall_c[(iy + 1)*room_w + ix] == 0 || (n_enemies > 0 && wall_c[(iy + 1)*room_w + ix] % 9 == 1)) ||
+			prop_c[(iy + 1)*room_w + ix] % 9 == 4 || prop_c[(iy + 1)*room_w + ix] % 9 == 5)
 		{
 			float dif1 = e->x - (float)ix;
 			float dif2 = (float)(iy + 1) - e->y;
@@ -872,7 +2359,8 @@ void check_Tile_Collision(int* wall_c, int* floor_c, int room_w, Entity_Instance
 		if ((float)ix != e->x)
 		{
 			//bottom right
-			if ((wall_c[(iy + 1) * room_w + ix + 1] == 1 || (n_enemies > 0 && wall_c[(iy + 1) * room_w + ix + 1] >= 0)) || floor_c[(iy + 1) * room_w + ix + 1] >= 0)
+			if ((wall_c[(iy + 1)*room_w + ix + 1] == 0 || (n_enemies > 0 && wall_c[(iy + 1)*room_w + ix + 1] % 9 == 1)) ||
+				prop_c[(iy + 1)*room_w + ix + 1] % 9 == 4 || prop_c[(iy + 1)*room_w + ix + 1] % 9 == 5)
 			{
 				float dif1 = (float)(ix + 1) - e->x;
 				float dif2 = (float)(iy + 1) - e->y;
@@ -884,6 +2372,7 @@ void check_Tile_Collision(int* wall_c, int* floor_c, int room_w, Entity_Instance
 		}
 	}
 }
+*/
 
 struct Camera
 {
@@ -953,10 +2442,10 @@ void update_Animation(Entity_Instance* e, unsigned int curr_time)
 	}
 	else if (e->state == DAMAGE)
 	{
-		if (e->direction == LEFT) e->x += e->key->speed;
-		else if (e->direction == RIGHT) e->x -= e->key->speed;
-		else if (e->direction == DOWN) e->y -= e->key->speed;
-		else if (e->direction == UP) e->y += e->key->speed;
+		if (e->direction == LEFT) e->x += e->key->speed * 1.5f;
+		else if (e->direction == RIGHT) e->x -= e->key->speed * 1.5f;
+		else if (e->direction == DOWN) e->y -= e->key->speed * 1.5f;
+		else if (e->direction == UP) e->y += e->key->speed * 1.5f;
 
 		if (1000.0 / (curr_time - e->last_update) <= e->key->dmg_rate[direction] || e->key->dmg_rate[direction] <= 0)
 		{
@@ -982,6 +2471,17 @@ void update_Animation(Entity_Instance* e, unsigned int curr_time)
 		}
 		return;
 	}
+	else if (e->state == FALL)
+	{
+		if (1000.0 / (curr_time - e->last_update) <= e->key->fall_rate[direction] || e->key->fall_rate[direction] <= 0)
+		{
+			e->last_update = curr_time;
+			if (e->curr_frame < e->key->fall_start[direction] || e->curr_frame > e->key->fall_end[direction]) e->curr_frame = e->key->fall_start[direction];
+			else if (e->curr_frame == e->key->fall_end[direction]) e->state = DEAD;
+			else ++e->curr_frame;
+		}
+		return;
+	}
 }
 
 //drawing non-moving room
@@ -998,17 +2498,19 @@ void draw_Room_Layer(SDL_Renderer* renderer, const int* layer, const Sheet* src_
 	SDL_Rect dest = { 0 };
 	dest.w = src_sheet->sprite_w;
 	dest.h = src_sheet->sprite_w;
-
 	const int* data = layer;
+	
 	for (int y = 0; y < room_h; y++)
 	{
 		for (int x = 0; x < room_w; x++)
 		{
-			src.x = (data[y * room_w + x] % src_sheet->n_cols) * src.w;
-			src.y = (data[y * room_w + x] / src_sheet->n_cols) * src.h;
+			if (data[y * room_w + x] >= 0)
+			{
+				src.x = (data[y * room_w + x] % src_sheet->n_cols) * src.w;
+				src.y = (data[y * room_w + x] / src_sheet->n_cols) * src.h;
 
-			SDL_RenderCopy(renderer, src_sheet->sheet, &src, &dest);
-
+				SDL_RenderCopy(renderer, src_sheet->sheet, &src, &dest);
+			}
 			dest.x += dest.w;
 		}
 		dest.x = 0;
@@ -1143,13 +2645,13 @@ void draw_Entity_Collision(SDL_Renderer* renderer, SDL_Texture* green, SDL_Textu
 		}
 		else if (e.direction == RIGHT)
 		{
-			dest.w = (int)((float)dest.w * atk_range);
 			dest.x += dest.w;
+			dest.w = (int)((float)dest.w * atk_range);
 		}
 		else if (e.direction == DOWN)
 		{
-			dest.h = (int)((float)dest.h * atk_range);
 			dest.y += dest.h;
+			dest.h = (int)((float)dest.h * atk_range);
 		}
 		else if (e.direction == UP)
 		{
@@ -1160,9 +2662,13 @@ void draw_Entity_Collision(SDL_Renderer* renderer, SDL_Texture* green, SDL_Textu
 	}
 }
 
+struct Pixel
+{
+	char r, g, b, a;
+};
+
 int main(int argc, char** argv)
 {
-	srand((unsigned int)time(0));
 	//SDL Init
 	SDL_Init(SDL_INIT_EVERYTHING);
 	Mix_OpenAudio(22050, MIX_DEFAULT_FORMAT, 2, 4096);
@@ -1172,6 +2678,7 @@ int main(int argc, char** argv)
 	SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
 
 	//System Init
+	srand((unsigned int)time(0));
 	unsigned int curr_time = 0;
 	unsigned int last_update_time = 0;
 	short max_framerate = 60;
@@ -1187,14 +2694,14 @@ int main(int argc, char** argv)
 	int n_inputs = 0;
 	float atk_range = 0.25;
 	SDL_Texture* hud_sheet = { 0 };
-	load_Image_To_Texture(&hud_sheet, renderer, "Assets/Images/HUD.png");
+	load_Image_To_Texture(&hud_sheet, renderer, "Assets/Images/HUD_Set.png");
 	int hud_w = 64;
-	int hut_h = 128;
+	int hud_h = 128;
 
 	//font init
 	Text::Font font = { 0 };
 	font.src = NULL;
-	load_Image_And_Size_To_Texture(&font.src, &font.src_w, &font.src_h, renderer, "Assets/Images/fontsheet.png");
+	load_Image_And_Size_To_Texture(&font.src, &font.src_w, &font.src_h, renderer, "Assets/Images/Font.png");
 	font.font_w = 64;
 	font.font_h = 96;
 	font.n_cols = font.src_w / font.font_w;
@@ -1207,7 +2714,7 @@ int main(int argc, char** argv)
 	camera.speed = 0.015f;
 	int direction = MID;
 	int prev_direction = MID;
-	
+
 	//to show collisions
 	char debug_toggle = -1;
 	int col_box_w = 0;
@@ -1221,11 +2728,14 @@ int main(int argc, char** argv)
 
 	//Player Init
 	Sheet chicken_sheet = { 0 };
-	load_Sheet(&chicken_sheet, 64, 64, renderer, "Assets/Images/PlayerSpritesheet.png");
+	load_Sheet(&chicken_sheet, 64, 64, renderer, "Assets/Images/Chicken_Spritesheet.png");
+
+	Sheet chicken_attack = { 0 };
+	load_Sheet(&chicken_attack, 192, 192, renderer, "Assets/Images/Chicken_Attack.png");
 
 	Entity_Key chicken_key = { 0 };
-	load_Entity_Key(&chicken_key, "Assets/EDS/Chicken.eds", &chicken_sheet, NULL, "Assets/Audio/SFX/Chicken_Attack_Miss.wav", NULL, NULL);
-	chicken_key.max_hp = 3;
+	load_Entity_Key(&chicken_key, "Assets/EDS/Chicken.eds", &chicken_sheet, NULL, "Assets/Audio/SFX/Chicken_Attack_Miss.wav", "Assets/Audio/SFX/Chicken_Attack_Hit.wav", NULL);
+	chicken_key.max_hp = 5;
 
 	Entity_Instance p1 = { 0 };
 	p1.key = &chicken_key;
@@ -1237,54 +2747,146 @@ int main(int argc, char** argv)
 	p1.curr_hp = p1.key->max_hp;
 	int player_money = 0;
 
-	Sheet enemy_sheet = { 0 };
-	load_Sheet(&enemy_sheet, 64, 64, renderer, "Assets/Images/EnemySpritesheet.png");
+	Sheet blob_sheet = { 0 };
+	load_Sheet(&blob_sheet, 64, 64, renderer, "Assets/Images/Blob_Spritesheet.png");
 
-	Entity_Key enemy_key = { 0 };
-	load_Entity_Key(&enemy_key, "Assets/EDS/Enemy.eds", &enemy_sheet, "Assets/Audio/SFX/Blob_Movement.wav", "Assets/Audio/SFX/Blob_Attack.wav", "Assets/Audio/SFX/Chicken_Attack_Hit.wav", "Assets/Audio/SFX/Enemy_Death.wav");
-	enemy_key.speed = 0.05f;
-	enemy_key.max_hp = 2;
+	Entity_Key blob_key = { 0 };
+	load_Entity_Key(&blob_key, "Assets/EDS/Blob.eds", &blob_sheet, "Assets/Audio/SFX/Blob_Movement.wav", "Assets/Audio/SFX/Blob_Attack.wav", "Assets/Audio/SFX/Chicken_Attack_Hit.wav", "Assets/Audio/SFX/Enemy_Death.wav");
+	blob_key.speed = 0.05f;
+	blob_key.max_hp = 2;
+
+	Sheet bat_sheet = { 0 };
+	load_Sheet(&bat_sheet, 64, 64, renderer, "Assets/Images/Bat_Spritesheet.png");
+
+	Entity_Key bat_key = { 0 };
+	load_Entity_Key(&bat_key, "Assets/EDS/Bat.eds", &bat_sheet, "Assets/Audio/SFX/Bat_Movement.wav", "Assets/Audio/SFX/Bat_Attack.wav", "Assets/Audio/SFX/Chicken_Attack_Hit.wav", "Assets/Audio/SFX/Enemy_Death.wav");
+	bat_key.speed = 0.06f;
+	bat_key.max_hp = 1;
+
+	Sheet crab_sheet = { 0 };
+	load_Sheet(&crab_sheet, 64, 64, renderer, "Assets/Images/Crab_Spritesheet.png");
+
+	Entity_Key crab_key = { 0 };
+	load_Entity_Key(&crab_key, "Assets/EDS/Crab.eds", &crab_sheet, NULL, "Assets/Audio/SFX/Chicken_Attack_Miss.wav", "Assets/Audio/SFX/Chicken_Attack_Hit.wav", "Assets/Audio/SFX/Enemy_Death.wav");
+	crab_key.speed = 0.05f;
+	crab_key.max_hp = 2;
 
 	const int max_enemies = 5;
 	int n_enemies = 0;
 	Entity_Instance enemies[max_enemies] = { 0 };
-	for (int i = 0; i < max_enemies; ++i) enemies[i].key = &enemy_key;
+	for (int i = 0; i < max_enemies; ++i) enemies[i].key = &blob_key;
 
-	Map_Key key = { 0 };
-	load_Map_Key(&key, 16, 12, 16, 11);
+	Map_Key dungeon_key = { 0 };
+	load_Map_Key(&dungeon_key, 16, 12, 16, 16, "Assets/CSV/Hero_Dungeon");
+
+	Map_Key beach_key = { 0 };
+	load_Map_Key(&beach_key, 16, 12, 16, 16, "Assets/CSV/Hero_Beach");
 
 	//load Locale
-	Sheet terrain_sheet = { 0 };
-	load_Sheet(&terrain_sheet, camera.scale, camera.scale, renderer, "Assets/Images/Modular_Tileset_Dungeon.png");
+	Sheet dungeon_sheet = { 0 };
+	load_Sheet(&dungeon_sheet, camera.scale, camera.scale, renderer, "Assets/Images/Dungeon_Terrain.png");
 
-	Sheet prop_sheet = { 0 };
-	load_Sheet(&prop_sheet, camera.scale, camera.scale, renderer, "Assets/Images/Propsheet.png");
+	Sheet beach_sheet = { 0 };
+	load_Sheet(&beach_sheet, camera.scale, camera.scale, renderer, "Assets/Images/Beach_Terrain.png");
+
+	Sheet subfloor_sheet = { 0 };
+	load_Sheet(&subfloor_sheet, camera.scale, camera.scale, renderer, "Assets/Images/Pitfall.png");
+	int subfloor_rate = 3;
+	unsigned int last_subfloor_update = 0;
+	int curr_subfloor_frame = 0;
+
+	Sheet water_sheet = { 0 };
+	water_sheet.sprite_w = camera.scale;
+	water_sheet.sprite_h = camera.scale;
+	SDL_Surface* recolor = IMG_Load("Assets/Images/Pitfall.png");
+	assert(recolor);
+	SDL_LockSurface(recolor);
+	water_sheet.sheet_w = recolor->w;
+	water_sheet.sheet_h = recolor->h;
+	SDL_UnlockSurface(recolor);
+	water_sheet.n_cols = water_sheet.sheet_w / water_sheet.sprite_w;
+	Pixel* recolor_p = (Pixel*)recolor->pixels;
+	for (int i = 0; i < water_sheet.sheet_w * water_sheet.sheet_h; ++i)
+	{
+		char saved_green = recolor_p[i].g;
+		recolor_p[i].r = recolor_p[i].b * 3;
+		recolor_p[i].g = recolor_p[i].b * 3;
+		recolor_p[i].b = saved_green;
+	}
+	water_sheet.sheet = SDL_CreateTextureFromSurface(renderer, recolor);
+	assert(water_sheet.sheet);
+	SDL_FreeSurface(recolor);
+
+	Sheet dungeon_prop_sheet = { 0 };
+	load_Sheet(&dungeon_prop_sheet, camera.scale, camera.scale, renderer, "Assets/Images/Dungeon_Props.png");
+
+	Sheet beach_prop_sheet = { 0 };
+	load_Sheet(&beach_prop_sheet, camera.scale, camera.scale, renderer, "Assets/Images/Beach_Props.png");
+
+	float collision_transparency = 0.5;
+	Sheet collision_sheet = { 0 };
+	collision_sheet.sprite_w = camera.scale;
+	collision_sheet.sprite_h = camera.scale;
+	SDL_Surface* temp = IMG_Load("Assets/Images/Collision_Tileset.png");
+	assert(temp);
+	SDL_LockSurface(temp);
+	collision_sheet.sheet_w = temp->w;
+	collision_sheet.sheet_h = temp->h;
+	SDL_UnlockSurface(temp);
+	collision_sheet.n_cols = collision_sheet.sheet_w / collision_sheet.sprite_w;
+	Pixel* temp_p = (Pixel*)temp->pixels;
+	for (int i = 0; i < collision_sheet.sheet_w * collision_sheet.sheet_h; ++i) if (temp_p[i].a != 0) temp_p[i].a = (int)((float)255 * collision_transparency);
+	collision_sheet.sheet = SDL_CreateTextureFromSurface(renderer, temp);
+	assert(collision_sheet.sheet);
+	SDL_FreeSurface(temp);
 
 	Map dungeon_map = { 0 };
-	dungeon_map.src_sheet = &terrain_sheet;
+	dungeon_map.src_sheet = &beach_sheet;
 	dungeon_map.room_w = 16;
 	dungeon_map.room_h = 12;
 
 	static int locale[5] = { 0 };
 
-	locale[MID] = generate_Map(&dungeon_map, 3, 3, key);
+	//swap dungeon or beach
+	int map_choice = rand() % 2;
+	Map_Key* terrain_key = &beach_key;
+	Sheet* subfloor = &water_sheet;
+	Sheet* prop_sheet = &beach_prop_sheet;
+	Entity_Key* ground_enemy = &crab_key;
+	if (map_choice == 1)
+	{
+		dungeon_map.src_sheet = &dungeon_sheet;
+		terrain_key = &dungeon_key;
+		subfloor = &subfloor_sheet;
+		prop_sheet = &dungeon_prop_sheet;
+		ground_enemy = &blob_key;
+	}
+
+	locale[MID] = generate_Map(&dungeon_map, 3, 3, *terrain_key);
+	if (map_choice == 0) for (int i = 0; i < 9; ++i) dungeon_map.subfloor_type[i] = 1;
 	locale[LEFT] = locale[MID] - 1;
 	locale[RIGHT] = locale[MID] + 1;
 	locale[DOWN] = locale[MID] + dungeon_map.map_w;
 	locale[UP] = locale[MID] - dungeon_map.map_w;
 	++dungeon_map.visited[locale[MID]];
 
-	float lava_roam = 0.0f;
-	float lava_speed = 0.25f;
-
-	Mix_Chunk* ambient = Mix_LoadWAV("Assets/Audio/Ambient/Drip Cave.wav");
+	Mix_Chunk* ambient = NULL;
+	if (map_choice == 0) ambient = Mix_LoadWAV("Assets/Audio/Ambient/Windy.wav");
+	else ambient = Mix_LoadWAV("Assets/Audio/Ambient/Drip Cave.wav");
 	Mix_PlayChannel(-1, ambient, -1);
+	
+	Mix_Chunk* door_close = Mix_LoadWAV("Assets/Audio/SFX/Spike_Fwip.wav");
+
+	int test_toggle = -1; 
 
 	for (;;)
 	{
 		curr_time = SDL_GetTicks();
 		if (1000.0 / (curr_time - last_update_time) <= max_framerate || max_framerate <= 0)
 		{
+			//printf("%d\n", test_toggle);
+			//test_toggle *= -1;
+
 			//update system
 			last_update_time = curr_time;
 			prev_direction = direction;
@@ -1376,7 +2978,7 @@ int main(int argc, char** argv)
 				}
 				else
 				{
-					if (p1.state != ATTACK && p1.state != DAMAGE && p1.state != DYING && p1.state != DEAD)
+					if (p1.state != ATTACK && p1.state != DAMAGE && p1.state != DYING && p1.state != FALL && p1.state != DEAD)
 					{
 						p1.state = IDLE;
 						if (last_pressed == LEFT)
@@ -1406,14 +3008,32 @@ int main(int argc, char** argv)
 					}
 					else if (p1.state == DEAD)
 					{
+						//reset enemies
 						n_enemies = 0;
 						for (int i = 0; i < max_enemies; ++i) enemies[i].state = DEAD;
+						//reset player
 						p1.state = IDLE;
 						p1.curr_hp = p1.key->max_hp;
 						p1.x = dungeon_map.room_w * 0.5f - 0.5f;
 						p1.y = dungeon_map.room_h * 0.5f - 0.5f;
 						player_money = 0;
-						locale[MID] = generate_Map(&dungeon_map, 3, 3, key);
+
+						//reset map
+						map_choice = rand() % 2;
+						terrain_key = &beach_key;
+						subfloor = &water_sheet;
+						prop_sheet = &beach_prop_sheet;
+						ground_enemy = &crab_key;
+						if (map_choice == 1)
+						{
+							dungeon_map.src_sheet = &dungeon_sheet;
+							terrain_key = &dungeon_key;
+							subfloor = &subfloor_sheet;
+							prop_sheet = &dungeon_prop_sheet;
+							ground_enemy = &blob_key;
+						}
+						locale[MID] = generate_Map(&dungeon_map, 3, 3, *terrain_key);
+						if (map_choice == 0) for (int i = 0; i < 9; ++i) dungeon_map.subfloor_type[i] = 1;
 						locale[LEFT] = locale[MID] - 1;
 						locale[RIGHT] = locale[MID] + 1;
 						locale[DOWN] = locale[MID] + dungeon_map.map_w;
@@ -1444,13 +3064,22 @@ int main(int argc, char** argv)
 						++camera.map_x;
 					}
 				}
-				
+
 				//AI behaviour
 				for (int i = 0; i < max_enemies; ++i)
 				{
-					if (enemies[i].state != DAMAGE && enemies[i].state != DYING && enemies[i].state != DEAD)
+					if (enemies[i].state != DAMAGE && enemies[i].state != DYING && enemies[i].state != FALL && enemies[i].state != DEAD)
 					{
-						move_To_Position(&enemies[i], dungeon_map.wall_collisions[locale[MID]], dungeon_map.floor_collisions[locale[MID]], dungeon_map.room_w, dungeon_map.room_h, p1.x, p1.y);
+						if (enemies[i].type == GROUND)
+						{
+							move_Ground_Entity(&enemies[i], dungeon_map.wall_collisions[locale[MID]], dungeon_map.ground_collisions[locale[MID]],
+								dungeon_map.prop_collisions[locale[MID]], dungeon_map.room_w, dungeon_map.room_h, p1.x, p1.y);
+						}
+						else if (enemies[i].type == AIR)
+						{
+							move_Air_Entity(&enemies[i], dungeon_map.wall_collisions[locale[MID]],
+								dungeon_map.prop_collisions[locale[MID]], dungeon_map.room_w, dungeon_map.room_h, p1.x, p1.y);
+						}
 					}
 				}
 
@@ -1460,15 +3089,15 @@ int main(int argc, char** argv)
 					int n_hits = 0;
 					for (int i = 0; i < max_enemies; ++i)
 					{
-						if (enemies[i].state != DEAD && enemies[i].state != DAMAGE && enemies[i].state != DYING)
+						if (enemies[i].state != DEAD && enemies[i].state != DAMAGE && enemies[i].state != DYING && enemies[i].state != FALL)
 						{
 							if (check_Hit_Collision(&enemies[i], p1, atk_range) == 2) ++n_hits;
 						}
 					}
-					player_money += n_hits * 10;
+					player_money += n_hits * (rand() % 10);
 					n_enemies -= n_hits;
 				}
-				if (p1.state != DEAD && p1.state != DAMAGE && p1.state != DYING)
+				if (p1.state != DEAD && p1.state != DAMAGE && p1.state != DYING && p1.state != FALL)
 				{
 					for (int i = 0; i < max_enemies; ++i)
 					{
@@ -1485,13 +3114,14 @@ int main(int argc, char** argv)
 					}
 				}
 
-				//wall collisions
-				check_Tile_Collision(dungeon_map.wall_collisions[locale[MID]], dungeon_map.floor_collisions[locale[MID]], dungeon_map.room_w, &p1, n_enemies);
+				//collisions
+				check_Ground_Collision(dungeon_map.wall_collisions[locale[MID]], dungeon_map.prop_collisions[locale[MID]], dungeon_map.ground_collisions[locale[MID]], dungeon_map.room_w, &p1, n_enemies, collision_sheet.n_cols);
 				for (int i = 0; i < max_enemies; ++i)
 				{
 					if (enemies[i].state != DEAD)
 					{
-						check_Tile_Collision(dungeon_map.wall_collisions[locale[MID]], dungeon_map.floor_collisions[locale[MID]], dungeon_map.room_w, &enemies[i], n_enemies);
+						if (enemies[i].type == GROUND) check_Ground_Collision(dungeon_map.wall_collisions[locale[MID]], dungeon_map.prop_collisions[locale[MID]], dungeon_map.ground_collisions[locale[MID]], dungeon_map.room_w, &enemies[i], n_enemies, collision_sheet.n_cols);
+						else check_Air_Collision(dungeon_map.wall_collisions[locale[MID]], dungeon_map.prop_collisions[locale[MID]], dungeon_map.room_w, &p1, n_enemies, collision_sheet.n_cols);
 					}
 				}
 			}
@@ -1572,61 +3202,115 @@ int main(int argc, char** argv)
 				if (prev_direction != direction && dungeon_map.visited[locale[MID]] <= 0)
 				{
 					++dungeon_map.visited[locale[MID]];
-					for (int i = 0; i < dungeon_map.room_w * dungeon_map.room_h; ++i)
+					int n_spawned_enemies = rand() % max_enemies; //random # enemies per room
+					if (n_spawned_enemies > 0) Mix_PlayChannel(-1, door_close, 0);
+					for (int i = 0; i < n_spawned_enemies; ++i)
 					{
-						if (n_enemies >= max_enemies) break;
-						if (dungeon_map.spawns[locale[MID]][i] >= 0)
+						int rand_room = -1;
+						while (rand_room < 0 || dungeon_map.spawns[locale[MID]][rand_room].x <= 0)
 						{
-							enemies[n_enemies].state = IDLE;
-							enemies[n_enemies].direction = DOWN;
-							enemies[n_enemies].x = (float)(i % dungeon_map.room_w);
-							enemies[n_enemies].y = (float)(i / dungeon_map.room_w);
-							enemies[n_enemies].curr_hp = enemies[n_enemies].key->max_hp;
-							++n_enemies;
+							rand_room = rand() % dungeon_map.n_spawn_points[locale[MID]];
 						}
+						enemies[i].type = rand() % 2;
+						if (enemies[i].type == GROUND) enemies[i].key = ground_enemy;
+						else enemies[i].key = &bat_key;
+						enemies[i].state = IDLE;
+						enemies[i].direction = DOWN;
+						enemies[i].x = (float)dungeon_map.spawns[locale[MID]][rand_room].x;
+						enemies[i].y = (float)dungeon_map.spawns[locale[MID]][rand_room].y;
+						enemies[i].curr_hp = enemies[i].key->max_hp;
+						++n_enemies;
+						dungeon_map.spawns[locale[MID]][rand_room].x = 0;
 					}
 				}
 			}
-
+			
 			//update animations
 			for (int i = 0; i < max_enemies; ++i) if (enemies[i].state > 0) update_Animation(&enemies[i], curr_time);
 			update_Animation(&p1, curr_time);
+			if (1000.0 / (curr_time - last_subfloor_update) <= subfloor_rate || subfloor_rate <= 0)
+			{
+				last_subfloor_update = curr_time;
+				if (curr_subfloor_frame >= 3) curr_subfloor_frame = 0;
+				else ++curr_subfloor_frame;
+			}
 
 			//draw
 			SDL_RenderClear(renderer);
-			lava_roam = lava_roam + lava_speed;
-			if (lava_roam >= 64.0f) lava_roam = lava_roam - 64.0f;
-			SDL_Rect backdrop_src = { 5 * 64, 64, 64, 64 };
-			SDL_Rect backdrop_dest = { 0 - (int)lava_roam, 0 - (int)lava_roam, 64, 64 };
-			for (int y = -1; y < dungeon_map.room_h; ++y)
-			{
-				for (int x = -1; x < dungeon_map.room_w; ++x)
-				{
-					SDL_RenderCopy(renderer, terrain_sheet.sheet, &backdrop_src, &backdrop_dest);
-					backdrop_dest.x += 64;
-				}
-				backdrop_dest.x = 0 - (int)lava_roam;
-				backdrop_dest.y += 64;
-			}
 			if (direction == MID)
 			{
-				draw_Room_Layer(renderer, dungeon_map.floors[locale[MID]],
-					&terrain_sheet, dungeon_map.room_w, dungeon_map.room_h, camera.scale);
+				SDL_Rect backdrop_src = { 0 };
+				if (dungeon_map.subfloor_type[locale[MID]] == 0) backdrop_src = { curr_subfloor_frame * 64, 0, 64, 64 };
+				else if (dungeon_map.subfloor_type[locale[MID]] == 1) backdrop_src = { curr_subfloor_frame * 64, 64, 64, 64 };
+				else if (dungeon_map.subfloor_type[locale[MID]] == 2) backdrop_src = { 0, 128, 64, 64 };
+				else backdrop_src = { 128, 128, 64, 64 };
+				SDL_Rect backdrop_dest = { 0, 0, 64, 64 };
+				for (int y = 0; y < dungeon_map.room_h; ++y)
+				{
+					for (int x = 0; x < dungeon_map.room_w; ++x)
+					{
+						SDL_RenderCopy(renderer, subfloor->sheet, &backdrop_src, &backdrop_dest);
+						backdrop_dest.x += 64;
+					}
+					backdrop_dest.x = 0;
+					backdrop_dest.y += 64;
+				}
+
+				draw_Room_Layer(renderer, dungeon_map.ground[locale[MID]],
+					dungeon_map.src_sheet, dungeon_map.room_w, dungeon_map.room_h, camera.scale);
 				draw_Room_Layer(renderer, dungeon_map.props[locale[MID]],
-					&prop_sheet, dungeon_map.room_w, dungeon_map.room_h, camera.scale);
+					prop_sheet, dungeon_map.room_w, dungeon_map.room_h, camera.scale);
 				for (int i = 0; i < max_enemies; ++i)
 				{
 					if (enemies[i].state != DEAD) draw_Entity_Instance(renderer, enemies[i], camera.scale);
 				}
-				draw_Entity_Instance(renderer, p1, camera.scale);
-				draw_Room_Layer(renderer, dungeon_map.walls[locale[MID]],
-					&terrain_sheet, dungeon_map.room_w, dungeon_map.room_h, camera.scale);
+				if (map_choice == 0 && n_enemies == 0)
+				{
+					draw_Room_Layer(renderer, dungeon_map.walls[locale[MID]],
+						dungeon_map.src_sheet, dungeon_map.room_w, dungeon_map.room_h, camera.scale);
+				}
+				if (p1.state == ATTACK)
+				{
+					SDL_Rect atk_dest = { (int)((p1.x - 1.0f) * 64), (int)((p1.y - 1.0f) * 64), 192, 192 };
+					SDL_Rect atk_src = { 0 };
+					if (p1.direction == LEFT || p1.direction == RIGHT) atk_src = { 192 * (p1.curr_frame - p1.key->atk_start[F_SIDE]), 0, 192, 192 };
+					else if (p1.direction == DOWN) atk_src = { 192 * (p1.curr_frame - p1.key->atk_start[F_DOWN]), 192, 192, 192 };
+					else atk_src = { 192 * (p1.curr_frame - p1.key->atk_start[F_UP]), 384, 192, 192 };
+
+					if (p1.direction == RIGHT) SDL_RenderCopyEx(renderer, chicken_attack.sheet, &atk_src, &atk_dest, 0, NULL, SDL_FLIP_HORIZONTAL);
+					else SDL_RenderCopy(renderer, chicken_attack.sheet, &atk_src, &atk_dest);
+				}
+				else draw_Entity_Instance(renderer, p1, camera.scale);
+				if (map_choice != 0)
+				{
+					if (n_enemies > 0)
+					{
+						SDL_Rect door_src = { 0, 0, 128, 64 };
+						SDL_Rect door_dest = { 7 * 64, 64, 128, 64 };
+						SDL_RenderCopy(renderer, dungeon_sheet.sheet, &door_src, &door_dest);
+
+						door_src.y += 64;
+						door_dest.y += 9 * 64;
+						SDL_RenderCopy(renderer, dungeon_sheet.sheet, &door_src, &door_dest);
+
+						door_src = { 128, 128, 64, 128 };
+						door_dest = { 64, 5 * 64, 64, 128 };
+						SDL_RenderCopy(renderer, dungeon_sheet.sheet, &door_src, &door_dest);
+
+						door_src.x += 64;
+						door_dest.x += 13 * 64;
+						SDL_RenderCopy(renderer, dungeon_sheet.sheet, &door_src, &door_dest);
+					}
+					draw_Room_Layer(renderer, dungeon_map.walls[locale[MID]],
+						dungeon_map.src_sheet, dungeon_map.room_w, dungeon_map.room_h, camera.scale);
+				}
 
 				//draw collisions for debug
 				if (debug_toggle == 1)
 				{
-					draw_Collision_Layer(renderer, blue, dungeon_map.floor_collisions[locale[MID]], dungeon_map.room_w, dungeon_map.room_h, col_box_w, col_box_h, camera.scale);
-					draw_Collision_Layer(renderer, blue, dungeon_map.wall_collisions[locale[MID]], dungeon_map.room_w, dungeon_map.room_h, col_box_w, col_box_h, camera.scale);
+					draw_Room_Layer(renderer, dungeon_map.ground_collisions[locale[MID]], &collision_sheet, dungeon_map.room_w, dungeon_map.room_h, camera.scale);
+					draw_Room_Layer(renderer, dungeon_map.prop_collisions[locale[MID]], &collision_sheet, dungeon_map.room_w, dungeon_map.room_h, camera.scale);
+					draw_Room_Layer(renderer, dungeon_map.wall_collisions[locale[MID]], &collision_sheet, dungeon_map.room_w, dungeon_map.room_h, camera.scale);
 					draw_Entity_Collision(renderer, green, red, col_box_w, col_box_h, p1, camera.scale, atk_range);
 					for (int i = 0; i < max_enemies; ++i)
 					{
@@ -1636,19 +3320,76 @@ int main(int argc, char** argv)
 			}
 			else
 			{
-				draw_Rooms_Layers(renderer, dungeon_map.floors, locale[MID], direction,
-					&terrain_sheet, dungeon_map.room_w, dungeon_map.room_h, dungeon_map.map_w, &camera);
+				SDL_Rect backdrop_src = { 0 };
+				if (dungeon_map.subfloor_type[locale[MID]] == 0) backdrop_src = { curr_subfloor_frame * 64, 0, 64, 64 };
+				else if (dungeon_map.subfloor_type[locale[MID]] == 1) backdrop_src = { curr_subfloor_frame * 64, 64, 64, 64 };
+				else if (dungeon_map.subfloor_type[locale[MID]] == 2) backdrop_src = { 0, 128, 64, 64 };
+				else backdrop_src = { 128, 128, 64, 64 };
+				SDL_Rect backdrop_dest = { 0 - (int)(camera.x * camera.scale) * dungeon_map.room_w, 0 - (int)(camera.y * camera.scale) * dungeon_map.room_h, 64, 64 };
+				for (int y = 0; y < dungeon_map.room_h; ++y)
+				{
+					for (int x = 0; x < dungeon_map.room_w; ++x)
+					{
+						SDL_RenderCopy(renderer, subfloor->sheet, &backdrop_src, &backdrop_dest);
+						backdrop_dest.x += 64;
+					}
+					backdrop_dest.x = 0 - (int)(camera.x * camera.scale) * dungeon_map.room_w;
+					backdrop_dest.y += 64;
+				}
+
+				backdrop_src = { 0 };
+				if (dungeon_map.subfloor_type[locale[direction]] == 0) backdrop_src = { curr_subfloor_frame * 64, 0, 64, 64 };
+				else if (dungeon_map.subfloor_type[locale[direction]] == 1) backdrop_src = { curr_subfloor_frame * 64, 64, 64, 64 };
+				else if (dungeon_map.subfloor_type[locale[direction]] == 2) backdrop_src = { 0, 128, 64, 64 };
+				else backdrop_src = { 128, 128, 64, 64 };
+				int start_x = 0 - (int)(camera.x * camera.scale) * dungeon_map.room_w;
+				int start_y = 0 - (int)(camera.y * camera.scale) * dungeon_map.room_h;
+				if (direction == LEFT) start_x -= camera.scale * dungeon_map.room_w;
+				else if (direction == RIGHT) start_x += camera.scale * dungeon_map.room_w;
+				else if (direction == DOWN) start_y += camera.scale * dungeon_map.room_h;
+				else if (direction == UP) start_y -= camera.scale * dungeon_map.room_h;
+				backdrop_dest = { start_x, start_y, 64, 64 };
+				for (int y = 0; y < dungeon_map.room_h; ++y)
+				{
+					for (int x = 0; x < dungeon_map.room_w; ++x)
+					{
+						SDL_RenderCopy(renderer, subfloor->sheet, &backdrop_src, &backdrop_dest);
+						backdrop_dest.x += 64;
+					}
+					backdrop_dest.x = start_x;
+					backdrop_dest.y += 64;
+				}
+
+				draw_Rooms_Layers(renderer, dungeon_map.ground, locale[MID], direction,
+					dungeon_map.src_sheet, dungeon_map.room_w, dungeon_map.room_h, dungeon_map.map_w, &camera);
 				draw_Rooms_Layers(renderer, dungeon_map.props, locale[MID], direction,
-					&prop_sheet, dungeon_map.room_w, dungeon_map.room_h, dungeon_map.map_w, &camera);
+					prop_sheet, dungeon_map.room_w, dungeon_map.room_h, dungeon_map.map_w, &camera);
+				if (map_choice == 0)
+				{
+					draw_Rooms_Layers(renderer, dungeon_map.walls, locale[MID], direction,
+						dungeon_map.src_sheet, dungeon_map.room_w, dungeon_map.room_h, dungeon_map.map_w, &camera);
+				}
 				draw_Entity_Instance(renderer, p1, camera);
-				draw_Rooms_Layers(renderer, dungeon_map.walls, locale[MID], direction,
-					&terrain_sheet, dungeon_map.room_w, dungeon_map.room_h, dungeon_map.map_w, &camera);
+				if (map_choice != 0)
+				{
+					draw_Rooms_Layers(renderer, dungeon_map.walls, locale[MID], direction,
+						dungeon_map.src_sheet, dungeon_map.room_w, dungeon_map.room_h, dungeon_map.map_w, &camera);
+				}
+				if (debug_toggle == 1)
+				{
+					draw_Rooms_Layers(renderer, dungeon_map.ground_collisions, locale[MID], direction,
+						&collision_sheet, dungeon_map.room_w, dungeon_map.room_h, dungeon_map.map_w, &camera);
+					draw_Rooms_Layers(renderer, dungeon_map.prop_collisions, locale[MID], direction,
+						&collision_sheet, dungeon_map.room_w, dungeon_map.room_h, dungeon_map.map_w, &camera);
+					draw_Rooms_Layers(renderer, dungeon_map.wall_collisions, locale[MID], direction,
+						&collision_sheet, dungeon_map.room_w, dungeon_map.room_h, dungeon_map.map_w, &camera);
+				}
 			}
 			//empty hp bar
 			SDL_Rect hud_src = { 64, 0, 64, 128 };
 			SDL_Rect hud_dest = { 0, 0, 64, 128 };
 			SDL_RenderCopy(renderer, hud_sheet, &hud_src, &hud_dest);
-			//fill w/ hp
+			//fill with curr hp
 			hud_src.x = 0;
 			float hp_frac = (float)p1.curr_hp / (float)p1.key->max_hp;
 			hud_src.h = (int)((float)(128 - 32) * hp_frac);
@@ -1658,7 +3399,7 @@ int main(int argc, char** argv)
 			SDL_RenderCopy(renderer, hud_sheet, &hud_src, &hud_dest);
 			//heart
 			hud_src = { 128, 0, 64, 64 };
-			hud_dest = { 0, 0, 64, 64 };
+			hud_dest = { 0, 3, 64, 64 };
 			SDL_RenderCopy(renderer, hud_sheet, &hud_src, &hud_dest);
 			//display money
 			hud_src = { 128, 64, 64, 64 };
