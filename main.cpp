@@ -434,7 +434,7 @@ enum {F_SIDE = 0, F_DOWN, F_UP};
 struct Entity_Key
 {
 	Sheet* spritesheet;
-	float speed;
+	float speed, width, height, atk_w, atk_h;
 	unsigned int max_hp;
 	int idle_frame[3],
 		walk_start[3], walk_end[3], walk_rate[3],
@@ -763,35 +763,39 @@ void move_Ground_Entity(Entity_Instance* e, int* wall_col, int* floor_col, int* 
 	free(closed);
 
 	//move once direction known
-	e->state = WALK;
 	e->direction = direction;
 	if (n_steps <= 1)
 	{
-		Mix_PlayChannel(-1, e->key->atk_s, 0);
+		if (e->state != ATTACK) Mix_PlayChannel(-1, e->key->atk_s, 0);
+
 		e->state = ATTACK;
 	}
-	else if (direction == LEFT)
+	else
 	{
-		if ((float)ey != e->y && (wall_col[(ey+1) * room_w + ex - 1] >= 0 || floor_col[(ey+1) * room_w + ex - 1] % 9 == 2 ||
-			prop_col[(ey + 1) * room_w + ex - 1] % 9 == 3 || prop_col[(ey + 1) * room_w + ex - 1] % 9 == 4))
+		e->state = WALK;
+		if (direction == LEFT)
 		{
-			e->direction = UP;
-			e->y -= e->key->speed;
+			if ((float)ey != e->y && (wall_col[(ey + 1) * room_w + ex - 1] >= 0 || floor_col[(ey + 1) * room_w + ex - 1] % 9 == 2 ||
+				prop_col[(ey + 1) * room_w + ex - 1] % 9 == 3 || prop_col[(ey + 1) * room_w + ex - 1] % 9 == 4))
+			{
+				e->direction = UP;
+				e->y -= e->key->speed;
+			}
+			else e->x -= e->key->speed;
 		}
-		else e->x -= e->key->speed;
-	}
-	else if (direction == RIGHT)
-	{
-		if ((float)ey != e->y && (wall_col[(ey + 1) * room_w + ex - 1] >= 0 || floor_col[(ey + 1) * room_w + ex - 1] % 9 == 2 ||
-			prop_col[(ey + 1) * room_w + ex - 1] % 9 == 3 || prop_col[(ey + 1) * room_w + ex - 1] % 9 == 4))
+		else if (direction == RIGHT)
 		{
-			e->direction = UP;
-			e->y -= e->key->speed;
+			if ((float)ey != e->y && (wall_col[(ey + 1) * room_w + ex - 1] >= 0 || floor_col[(ey + 1) * room_w + ex - 1] % 9 == 2 ||
+				prop_col[(ey + 1) * room_w + ex - 1] % 9 == 3 || prop_col[(ey + 1) * room_w + ex - 1] % 9 == 4))
+			{
+				e->direction = UP;
+				e->y -= e->key->speed;
+			}
+			else e->x += e->key->speed;
 		}
-		else e->x += e->key->speed;
+		else if (direction == DOWN) e->y += e->key->speed;
+		else if (direction == UP) e->y -= e->key->speed;
 	}
-	else if (direction == DOWN) e->y += e->key->speed;
-	else if (direction == UP) e->y -= e->key->speed;
 }
 
 void check_Air_Successor(Heap* heap, Node* data, int* closed, int n_closed, const Node successor, int* wall_col, int* prop_col, int room_w, int dx, int dy)
@@ -1011,43 +1015,52 @@ void move_Air_Entity(Entity_Instance* e, int* wall_col, int* prop_col, int room_
 	free(closed);
 
 	//move once direction known
-	e->state = WALK;
 	e->direction = direction;
 	if (n_steps <= 1)
 	{
-		Mix_PlayChannel(-1, e->key->atk_s, 0);
+		if (e->state != ATTACK) Mix_PlayChannel(-1, e->key->atk_s, 0);
+
 		e->state = ATTACK;
 	}
-	else if (direction == LEFT)
+	else
 	{
-		if ((float)ey != e->y && (wall_col[(ey + 1) * room_w + ex - 1] >= 0 ||
-			prop_col[(ey + 1) * room_w + ex - 1] % 9 == 3 || prop_col[(ey + 1) * room_w + ex - 1] % 9 == 4))
+		e->state = WALK;
+		if (direction == LEFT)
 		{
-			e->direction = UP;
-			e->y -= e->key->speed;
+			if ((float)ey != e->y && (wall_col[(ey + 1) * room_w + ex - 1] >= 0 ||
+				prop_col[(ey + 1) * room_w + ex - 1] % 9 == 3 || prop_col[(ey + 1) * room_w + ex - 1] % 9 == 4))
+			{
+				e->direction = UP;
+				e->y -= e->key->speed;
+			}
+			else e->x -= e->key->speed;
 		}
-		else e->x -= e->key->speed;
-	}
-	else if (direction == RIGHT)
-	{
-		if ((float)ey != e->y && (wall_col[(ey + 1) * room_w + ex - 1] >= 0 ||
-			prop_col[(ey + 1) * room_w + ex - 1] % 9 == 3 || prop_col[(ey + 1) * room_w + ex - 1] % 9 == 4))
+		else if (direction == RIGHT)
 		{
-			e->direction = UP;
-			e->y -= e->key->speed;
+			if ((float)ey != e->y && (wall_col[(ey + 1) * room_w + ex - 1] >= 0 ||
+				prop_col[(ey + 1) * room_w + ex - 1] % 9 == 3 || prop_col[(ey + 1) * room_w + ex - 1] % 9 == 4))
+			{
+				e->direction = UP;
+				e->y -= e->key->speed;
+			}
+			else e->x += e->key->speed;
 		}
-		else e->x += e->key->speed;
+		else if (direction == DOWN) e->y += e->key->speed;
+		else if (direction == UP) e->y -= e->key->speed;
 	}
-	else if (direction == DOWN) e->y += e->key->speed;
-	else if (direction == UP) e->y -= e->key->speed;
+}
+
+int AABB(float ax, float ay, float aw, float ah, float bx, float by, float bw, float bh)
+{
+	if (ax + 0.1f <= bx + bw && ax + aw >= bx + 0.1f && ay + 0.1f <= by + bh && ay + ah >= by + 0.1f) return 1;
+	return 0;
 }
 
 int check_Hit_Collision(Entity_Instance* def, const Entity_Instance atk, float atk_buffer)
 {
 	if (atk.direction == LEFT)
 	{
-		if (def->x < atk.x && def->x + 1.0f > atk.x - atk_buffer &&
-			def->y < atk.y + 1.0f && def->y + 1.0f > atk.y)
+		if (AABB(def->x, def->y, def->key->width, def->key->height, atk.x - atk.key->width, atk.y, atk.key->atk_w, atk.key->height) == 1)
 		{
 			--def->curr_hp;
 			def->direction = RIGHT;
@@ -1067,8 +1080,7 @@ int check_Hit_Collision(Entity_Instance* def, const Entity_Instance atk, float a
 	}
 	else if (atk.direction == RIGHT)
 	{
-		if (def->x < atk.x + 1.0f + atk_buffer && def->x + 1.0f > atk.x + 1.0f &&
-			def->y < atk.y + 1.0f && def->y + 1.0f > atk.y)
+		if (AABB(def->x, def->y, def->key->width, def->key->height, atk.x + atk.key->width, atk.y, atk.key->atk_w, atk.key->height) == 1)
 		{
 			--def->curr_hp;
 			def->direction = LEFT;
@@ -1088,8 +1100,7 @@ int check_Hit_Collision(Entity_Instance* def, const Entity_Instance atk, float a
 	}
 	else if (atk.direction == DOWN)
 	{
-		if (def->y < atk.y + 1.0f + atk_buffer && def->y + 1.0f > atk.y + 1.0f &&
-			def->x < atk.x + 1.0f && def->x + 1.0f > atk.x)
+		if (AABB(def->x, def->y, def->key->width, def->key->height, atk.x, atk.y + atk.key->height, atk.key->width, atk.key->atk_h) == 1)
 		{
 			--def->curr_hp;
 			def->direction = UP;
@@ -1109,8 +1120,7 @@ int check_Hit_Collision(Entity_Instance* def, const Entity_Instance atk, float a
 	}
 	else
 	{
-		if (def->y < atk.y && def->y + 1.0f > atk.y - atk_buffer &&
-			def->x < atk.x + 1.0f && def->x + 1.0f > atk.x)
+		if (AABB(def->x, def->y, def->key->width, def->key->height, atk.x, atk.y - atk.key->atk_h, atk.key->width, atk.key->atk_h) == 1)
 		{
 			--def->curr_hp;
 			def->direction = DOWN;
@@ -1131,1248 +1141,327 @@ int check_Hit_Collision(Entity_Instance* def, const Entity_Instance atk, float a
 	return 0;
 }
 
-int AABB(float ax, float ay, float aw, float ah, float bx, float by, float bw, float bh)
+void save_Overlap(float* collisions, float ax, float ay, float aw, float ah, float bx, float by, float bw, float bh)
 {
-	if (ax + 0.1f < bx + bw && ax + aw > bx + 0.1f && ay + 0.1f < by + bh && ay + ah > by + 0.1f) return 1;
-	return 0;
+	float offsets[5] = { 0.0f };
+	for (int i = 0; i < 5; ++i) offsets[i] = 0.0f;
+
+	offsets[LEFT] = bx + bw - ax;
+	offsets[RIGHT] = ax + aw - bx;
+	offsets[DOWN] = ay + ah - by;
+	offsets[UP] = by + bh - ay;
+
+	for (int i = LEFT; i < UP + 1; ++i) if (collisions[i] < offsets[i] && offsets[i] < 0.5f) collisions[i] = offsets[i];
 }
 
-void correct_Tile_Collision(Entity_Instance* e, float x, float y, float w, float h)
+void check_Tile(float* overlap, int* data, int tile_id, int n_cols, float ex, float ey, float ew, float eh, float tx, float ty)
 {
-	float nx = (e->x + 0.5f) - (x + w * 0.5f);
-	float ny = (e->y + 0.75f) - (y + h * 0.5f);
-
-	if (fabs(nx) > fabs(ny))
+	if (data[tile_id] / n_cols == 0 || data[tile_id] / n_cols == 2 || data[tile_id] / n_cols == 6 || data[tile_id] / n_cols == 8 || data[tile_id] / n_cols == 12 || data[tile_id] / n_cols == 14 || data[tile_id] / n_cols == 18)
 	{
-		if (nx < 0)
+		if (AABB(ex, ey, ew, eh, tx, ty, 0.5f, 0.5f))
 		{
-			e->x -= (1.0f + w) * 0.5f + nx;
+			save_Overlap(overlap, ex, ey, ew, eh, tx, ty, 0.5f, 0.5f);
+		}
+	}
+	if (data[tile_id] / n_cols == 0 || data[tile_id] / n_cols == 2 || data[tile_id] / n_cols == 4 || data[tile_id] / n_cols == 8 || data[tile_id] / n_cols == 10 || data[tile_id] / n_cols == 14 || data[tile_id] / n_cols == 20)
+	{
+		if (AABB(ex, ey, ew, eh, tx + 0.5f, ty, 0.5f, 0.5f))
+		{
+			save_Overlap(overlap, ex, ey, ew, eh, tx + 0.5f, ty, 0.5f, 0.5f);
+		}
+	}
+	if (data[tile_id] / n_cols == 0 || data[tile_id] / n_cols == 4 || data[tile_id] / n_cols == 6 || data[tile_id] / n_cols == 8 || data[tile_id] / n_cols == 12 || data[tile_id] / n_cols == 16 || data[tile_id] / n_cols == 22)
+	{
+		if (AABB(ex, ey, ew, eh, tx, ty + 0.5f, 0.5f, 0.5f))
+		{
+			save_Overlap(overlap, ex, ey, ew, eh, tx, ty + 0.5f, 0.5f, 0.5f);
+		}
+	}
+	if (data[tile_id] / n_cols == 0 || data[tile_id] / n_cols == 2 || data[tile_id] / n_cols == 4 || data[tile_id] / n_cols == 6 || data[tile_id] / n_cols == 10 || data[tile_id] / n_cols == 16 || data[tile_id] / n_cols == 24)
+	{
+		if (AABB(ex, ey, ew, eh, tx + 0.5f, ty + 0.5f, 0.5f, 0.5f))
+		{
+			save_Overlap(overlap, ex, ey, ew, eh, tx + 0.5f, ty + 0.5f, 0.5f, 0.5f);
+		}
+	}
+}
+
+void check_Collision(Entity_Instance* e, int* wall_c, int* prop_c, int* floor_c, int room_w, int n_enemies, int n_cols)
+{
+	float collisions[5];
+	for (int i = 0; i < 5; ++i) collisions[i] = 0.0f;
+
+	int tx = (int)e->x;
+	int ty = (int)(e->y + 0.5f);
+	int tile_id = ty * room_w + tx;
+
+	if (wall_c[tile_id] % n_cols == 0 || (n_enemies > 0 && wall_c[tile_id] % n_cols == 1))
+	{
+		check_Tile(collisions, wall_c, tile_id, n_cols, e->x + 0.1f, e->y + 0.6f, 0.8f, 0.3f, (float)tx, (float)ty);
+	}
+	if (prop_c[tile_id] % n_cols == 4 || (e->type == GROUND && prop_c[tile_id] % n_cols == 3) || (e->type == AIR && prop_c[tile_id] % n_cols == 5))
+	{
+		check_Tile(collisions, prop_c, tile_id, n_cols, e->x + 0.1f, e->y + 0.6f, 0.8f, 0.3f, (float)tx, (float)ty);
+	}
+
+	if (tx != (int)(e->x + 0.9f))
+	{
+		++tx;
+		++tile_id;
+		if (wall_c[tile_id] % n_cols == 0 || (n_enemies > 0 && wall_c[tile_id] % n_cols == 1)) 
+		{
+			check_Tile(collisions, wall_c, tile_id, n_cols, e->x + 0.1f, e->y + 0.6f, 0.8f, 0.3f, (float)tx, (float)ty);
+		}
+		if (prop_c[tile_id] % n_cols == 4 || (e->type == GROUND && prop_c[tile_id] % n_cols == 3) || (e->type == AIR && prop_c[tile_id] % n_cols == 5))
+		{
+			check_Tile(collisions, prop_c, tile_id, n_cols, e->x + 0.1f, e->y + 0.6f, 0.8f, 0.3f, (float)tx, (float)ty);
+		}
+		--tx;
+		--tile_id;
+	}
+
+	if (ty != (int)(e->y + 0.9f))
+	{
+		++ty;
+		tile_id += room_w;
+		if (wall_c[tile_id] % n_cols == 0 || (n_enemies > 0 && wall_c[tile_id] % n_cols == 1))
+		{
+			check_Tile(collisions, wall_c, tile_id, n_cols, e->x + 0.1f, e->y + 0.6f, 0.8f, 0.3f, (float)tx, (float)ty);
+		}
+		if (prop_c[tile_id] % n_cols == 4 || (e->type == GROUND && prop_c[tile_id] % n_cols == 3) || (e->type == AIR && prop_c[tile_id] % n_cols == 5))
+		{
+			check_Tile(collisions, prop_c, tile_id, n_cols, e->x + 0.1f, e->y + 0.6f, 0.8f, 0.3f, (float)tx, (float)ty);
+		}
+		if (tx != (int)(e->x + 0.9f))
+		{
+			++tx;
+			++tile_id;
+			if (wall_c[tile_id] % n_cols == 0 || (n_enemies > 0 && wall_c[tile_id] % n_cols == 1))
+			{
+				check_Tile(collisions, wall_c, tile_id, n_cols, e->x + 0.1f, e->y + 0.6f, 0.8f, 0.3f, (float)tx, (float)ty);
+			}
+			if (prop_c[tile_id] % n_cols == 4 || (e->type == GROUND && prop_c[tile_id] % n_cols == 3) || (e->type == AIR && prop_c[tile_id] % n_cols == 5))
+			{
+				check_Tile(collisions, prop_c, tile_id, n_cols, e->x + 0.1f, e->y + 0.6f, 0.8f, 0.3f, (float)tx, (float)ty);
+			}
+			--tx;
+			--tile_id;
+		}
+		--ty;
+		tile_id -= room_w;
+	}
+
+	if (collisions[LEFT] > 0.0f)
+	{
+		if (collisions[RIGHT] > 0.0f)
+		{
+			if (collisions[DOWN] > 0.0f)
+			{
+				if (collisions[UP] > 0.0f)
+				{
+					int greatest = LEFT;
+					if (collisions[RIGHT] < collisions[greatest]) greatest = RIGHT;
+					if (collisions[DOWN] < collisions[greatest]) greatest = DOWN;
+					if (collisions[UP] < collisions[greatest]) greatest = UP;
+
+					if (greatest == LEFT)
+					{
+						e->x = e->x + collisions[LEFT];
+						if (collisions[DOWN] < collisions[UP]) e->y = e->y - 0.01f;
+						else if (collisions[DOWN] > collisions[UP]) e->y = e->y + 0.01f;
+					}
+					else if (greatest == RIGHT)
+					{
+						e->x = e->x - collisions[RIGHT];
+						if (collisions[DOWN] < collisions[UP]) e->y = e->y - 0.01f;
+						else if (collisions[DOWN] > collisions[UP]) e->y = e->y + 0.01f;
+					}
+					else if (greatest == DOWN)
+					{
+						e->y = e->y - collisions[DOWN];
+						if (collisions[LEFT] < collisions[RIGHT]) e->x = e->x + 0.01f;
+						else if (collisions[LEFT] > collisions[RIGHT]) e->x = e->x - 0.01f;
+					}
+					else if (greatest == UP)
+					{
+						e->y = e->y + collisions[UP];
+						if (collisions[LEFT] < collisions[RIGHT]) e->x = e->x + 0.01f;
+						else if (collisions[LEFT] > collisions[RIGHT]) e->x = e->x - 0.01f;
+					}
+				}
+				else
+				{
+					e->y = e->y - collisions[DOWN];
+					if (collisions[LEFT] < collisions[RIGHT]) e->x = e->x + 0.01f;
+					else if (collisions[LEFT] > collisions[RIGHT]) e->x = e->x - 0.01f;
+				}
+			}
+			else if (collisions[UP] > 0.0f)
+			{
+				e->y = e->y + collisions[UP];
+				if (collisions[LEFT] < collisions[RIGHT]) e->x = e->x + 0.01f;
+				else if (collisions[LEFT] > collisions[RIGHT]) e->x = e->x - 0.01f;
+			}
+			else
+			{
+				//opposite sides, idk
+			}
+		}
+		else if (collisions[DOWN] > 0.0f)
+		{
+			if (collisions[UP] > 0.0f)
+			{
+				e->x = e->x + collisions[LEFT];
+				if (collisions[DOWN] < collisions[UP]) e->y = e->y - 0.01f;
+				else if (collisions[DOWN] > collisions[UP]) e->y = e->y + 0.01f;
+			}
+			else
+			{
+				if (collisions[LEFT] < collisions[DOWN])
+				{
+					e->x = e->x + collisions[LEFT];
+					e->y = e->y - 0.01f;
+				}
+				else
+				{
+					e->y = e->y - collisions[DOWN];
+					e->x = e->x + 0.01f;
+				}
+			}
+		}
+		else if (collisions[UP] > 0.0f)
+		{
+			if (collisions[LEFT] < collisions[UP])
+			{
+				e->x = e->x + collisions[LEFT];
+				e->y = e->y + 0.01f;
+			}
+			else
+			{
+				e->y = e->y + collisions[UP];
+				e->x = e->x + 0.01f;
+			}
 		}
 		else
 		{
-			e->x += (1.0f + w) * 0.5f - nx;
+			e->x = e->x + collisions[LEFT];
 		}
-
-		if (ny < 0) e->y -= 0.01f;
-		else e->y += 0.01f;
 	}
-	else
+	else if (collisions[RIGHT] > 0.0f)
 	{
-		if (ny < 0)
+		if (collisions[DOWN] > 0.0f)
 		{
-			e->y -= (0.5f + h) * 0.5f + ny;
+			if (collisions[UP] > 0.0f)
+			{
+				e->x = e->x - collisions[RIGHT];
+				if (collisions[DOWN] < collisions[UP]) e->y = e->y - 0.01f;
+				else if (collisions[DOWN] > collisions[UP]) e->y = e->y + 0.01f;
+			}
+			else
+			{
+				if (collisions[RIGHT] < collisions[DOWN])
+				{
+					e->x = e->x - collisions[RIGHT];
+					e->y = e->y - 0.01f;
+				}
+				else
+				{
+					e->y = e->y - collisions[DOWN];
+					e->x = e->x - 0.01f;
+				}
+			}
+		}
+		else if (collisions[UP] > 0.0f)
+		{
+			if (collisions[RIGHT] < collisions[UP])
+			{
+				e->x = e->x - collisions[RIGHT];
+				e->y = e->y + 0.01f;
+			}
+			else
+			{
+				e->y = e->y + collisions[UP];
+				e->x = e->x - 0.01f;
+			}
 		}
 		else
 		{
-			e->y += (0.5f + h) * 0.5f - ny;
+			e->x = e->x - collisions[RIGHT];
 		}
-
-		if (nx < 0) e->x -= 0.01f;
-		else e->x += 0.01f;
 	}
-}
-
-/*
-void check_Tile_Collision(int* wall_c, int* prop_c, int* floor_c, int room_w, Entity_Instance* e, int n_enemies, int n_cols)
-{
-	float ex = e->x;
-	float ey = e->y + 0.5f;
-	int tx = (int)ex;
-	int ty = (int)ey;
-	int tile_id = ty * room_w + tx;
-
-	if (wall_c[tile_id] == 0 || (wall_c[tile_id] == 1 && n_enemies > 0))
+	else if (collisions[DOWN] > 0.0f)
 	{
-		while (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 1.0f, 1.0f) == 1)
+		if (collisions[UP] > 0.0f)
 		{
-			correct_Tile_Collision(e, (float)tx, (float)ty, 1.0f, 1.0f);
-			ex = e->x;
-			ey = e->y + 0.5f;
+			//opposite side idk
 		}
-		tx = (int)ex;
-		ty = (int)ey;
+		else
+		{
+			e->y = e->y - collisions[DOWN];
+		}
 	}
-	if (ex != (float)(int)ex)
+	else if (collisions[UP] > 0.0f)
 	{
-		++tx;
-		++tile_id;
-		if (wall_c[tile_id] == 0 || (wall_c[tile_id] == 1 && n_enemies > 0))
-		{
-			while (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 1.0f, 1.0f) == 1)
-			{
-				correct_Tile_Collision(e, (float)tx, (float)ty, 1.0f, 1.0f);
-				ex = e->x;
-				ey = e->y + 0.5f;
-			}
-			tx = (int)ex + 1;
-			ty = (int)ey;
-		}
-		--tx;
-		--tile_id;
-	}
-	if (ey != (float)(int)(ey + 0.5f))
-	{
-		++ty;
-		tile_id += room_w;
-		if (wall_c[tile_id] == 0 || (wall_c[tile_id] == 1 && n_enemies > 0))
-		{
-			while (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 1.0f, 1.0f) == 1)
-			{
-				correct_Tile_Collision(e, (float)tx, (float)ty, 1.0f, 1.0f);
-				ex = e->x;
-				ey = e->y + 0.5f;
-			}
-			tx = (int)ex;
-			ty = (int)ey + 1;
-		}
-		if (ex != (float)(int)ex)
-		{
-			++tx;
-			++tile_id;
-			if (wall_c[tile_id] == 0 || (wall_c[tile_id] == 1 && n_enemies > 0))
-			{
-				while (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 1.0f, 1.0f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx, (float)ty, 1.0f, 1.0f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex + 1;
-				ty = (int)ey + 1;
-			}
-			--tx;
-			--tile_id;
-		}
-		--ty;
-		tile_id -= room_w;
+		e->y = e->y + collisions[UP];
 	}
 
-	if (prop_c[tile_id] >= 0)
-	{
-		//printf("Greater TL Collision detected! %d\n", prop_c[tile_id] / n_cols);
-		if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 18)
-		{
-			while (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 0.5f, 0.5f) == 1)
-			{
-				correct_Tile_Collision(e, (float)tx, (float)ty, 0.5f, 0.5f);
-				ex = e->x;
-				ey = e->y + 0.5f;
-			}
-			tx = (int)ex;
-			ty = (int)ey;
-		}
-		if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 20)
-		{
-			while (AABB(ex, ey, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f) == 1)
-			{
-				correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f);
-				ex = e->x;
-				ey = e->y + 0.5f;
-			}
-			tx = (int)ex;
-			ty = (int)ey;
-		}
-		if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 22)
-		{
-			while (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
-			{
-				correct_Tile_Collision(e, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f);
-				ex = e->x;
-				ey = e->y + 0.5f;
-			}
-			tx = (int)ex;
-			ty = (int)ey;
-		}
-		if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 24)
-		{
-			while (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
-			{
-				correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f);
-				ex = e->x;
-				ey = e->y + 0.5f;
-			}
-			tx = (int)ex;
-			ty = (int)ey;
-		}
-	}
-	if (ex != (float)(int)ex)
-	{
-		++tx;
-		++tile_id;
-		if (prop_c[tile_id] >= 0)
-		{
-			//printf("Greater TR Collision detected! %d\n", prop_c[tile_id] / n_cols);
-			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 18)
-			{
-				while (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 0.5f, 0.5f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx, (float)ty, 0.5f, 0.5f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex + 1;
-				ty = (int)ey;
-			}
-			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 20)
-			{
-				while (AABB(ex, ey, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex + 1;
-				ty = (int)ey;
-			}
-			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 22)
-			{
-				while (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex + 1;
-				ty = (int)ey;
-			}
-			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 24)
-			{
-				while (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex + 1;
-				ty = (int)ey;
-			}
-		}
-		--tx;
-		--tile_id;
-	}
-	if ((int)ey != (int)(ey + 0.5f))
-	{
-		++ty;
-		tile_id += room_w;
-		if (prop_c[tile_id] >= 0)
-		{
-			//printf("Greater BL Collision detected! %d\n", prop_c[tile_id] / n_cols);
-			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 18)
-			{
-				while (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 0.5f, 0.5f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx, (float)ty, 0.5f, 0.5f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex;
-				ty = (int)ey + 1;
-			}
-			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 20)
-			{
-				while (AABB(ex, ey, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex;
-				ty = (int)ey + 1;
-			}
-			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 22)
-			{
-				while (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex;
-				ty = (int)ey + 1;
-			}
-			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 24)
-			{
-				while (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex;
-				ty = (int)ey + 1;
-			}
-		}
-		if (ex != (float)(int)ex)
-		{
-			++tx;
-			++tile_id;
-			if (prop_c[tile_id] >= 0)
-			{
-				//printf("Greater BR Collision detected! %d\n", prop_c[tile_id] / n_cols);
-				if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 18)
-				{
-					while (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 0.5f, 0.5f) == 1)
-					{
-						correct_Tile_Collision(e, (float)tx, (float)ty, 0.5f, 0.5f);
-						ex = e->x;
-						ey = e->y + 0.5f;
-					}
-					tx = (int)ex + 1;
-					ty = (int)ey + 1;
-				}
-				if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 20)
-				{
-					while (AABB(ex, ey, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f) == 1)
-					{
-						correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f);
-						ex = e->x;
-						ey = e->y + 0.5f;
-					}
-					tx = (int)ex + 1;
-					ty = (int)ey + 1;
-				}
-				if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 22)
-				{
-					while (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
-					{
-						correct_Tile_Collision(e, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f);
-						ex = e->x;
-						ey = e->y + 0.5f;
-					}
-					tx = (int)ex + 1;
-					ty = (int)ey + 1;
-				}
-				if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 24)
-				{
-					while (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
-					{
-						correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f);
-						ex = e->x;
-						ey = e->y + 0.5f;
-					}
-					tx = (int)ex + 1;
-					ty = (int)ey + 1;
-				}
-			}
-			--tx;
-			--tile_id;
-		}
-		--ty;
-		tile_id -= room_w;
-	}
-}
-*/
+	if (e->type == AIR) return;
 
-void check_Ground_Collision(int* wall_c, int* prop_c, int* floor_c, int room_w, Entity_Instance* e, int n_enemies, int n_cols)
-{
-	float ex = e->x;
-	float ey = e->y + 0.5f;
-	int tx = (int)ex;
-	int ty = (int)ey;
-	int tile_id = ty * room_w + tx;
+	int top_fall = 0;
 
-	if (wall_c[tile_id] == 0 || (wall_c[tile_id] == 1 && n_enemies > 0))
-	{
-		if (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 1.0f, 1.0f) == 1)
-		{
-			correct_Tile_Collision(e, (float)tx, (float)ty, 1.0f, 1.0f);
-			ex = e->x;
-			ey = e->y + 0.5f;
-		}
-		tx = (int)ex;
-		ty = (int)ey;
-	}
-	if (ex != (float)(int)ex)
-	{
-		++tx;
-		++tile_id;
-		if (wall_c[tile_id] == 0 || (wall_c[tile_id] == 1 && n_enemies > 0))
-		{
-			if (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 1.0f, 1.0f) == 1)
-			{
-				correct_Tile_Collision(e, (float)tx, (float)ty, 1.0f, 1.0f);
-				ex = e->x;
-				ey = e->y + 0.5f;
-			}
-			tx = (int)ex + 1;
-			ty = (int)ey;
-		}
-		--tx;
-		--tile_id;
-	}
-	if (ey != (float)(int)(ey + 0.5f))
-	{
-		++ty;
-		tile_id += room_w;
-		if (wall_c[tile_id] == 0 || (wall_c[tile_id] == 1 && n_enemies > 0))
-		{
-			if (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 1.0f, 1.0f) == 1)
-			{
-				correct_Tile_Collision(e, (float)tx, (float)ty, 1.0f, 1.0f);
-				ex = e->x;
-				ey = e->y + 0.5f;
-			}
-			tx = (int)ex;
-			ty = (int)ey + 1;
-		}
-		if (ex != (float)(int)ex)
-		{
-			++tx;
-			++tile_id;
-			if (wall_c[tile_id] == 0 || (wall_c[tile_id] == 1 && n_enemies > 0))
-			{
-				if (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 1.0f, 1.0f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx, (float)ty, 1.0f, 1.0f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex + 1;
-				ty = (int)ey + 1;
-			}
-			--tx;
-			--tile_id;
-		}
-		--ty;
-		tile_id -= room_w;
-	}
-
-	if (prop_c[tile_id] % n_cols == 3 || prop_c[tile_id] % n_cols == 4)
-	{
-		if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 18)
-		{
-			if (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 0.5f, 0.5f) == 1)
-			{
-				correct_Tile_Collision(e, (float)tx, (float)ty, 0.5f, 0.5f);
-				ex = e->x;
-				ey = e->y + 0.5f;
-			}
-			tx = (int)ex;
-			ty = (int)ey;
-		}
-		if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 20)
-		{
-			if (AABB(ex, ey, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f) == 1)
-			{
-				correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f);
-				ex = e->x;
-				ey = e->y + 0.5f;
-			}
-			tx = (int)ex;
-			ty = (int)ey;
-		}
-		if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 22)
-		{
-			if (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
-			{
-				correct_Tile_Collision(e, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f);
-				ex = e->x;
-				ey = e->y + 0.5f;
-			}
-			tx = (int)ex;
-			ty = (int)ey;
-		}
-		if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 24)
-		{
-			if (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
-			{
-				correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f);
-				ex = e->x;
-				ey = e->y + 0.5f;
-			}
-			tx = (int)ex;
-			ty = (int)ey;
-		}
-	}
-	if (ex != (float)(int)ex)
-	{
-		++tx;
-		++tile_id;
-		if (prop_c[tile_id] % n_cols == 3 || prop_c[tile_id] % n_cols == 4)
-		{
-			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 18)
-			{
-				if (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 0.5f, 0.5f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx, (float)ty, 0.5f, 0.5f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex + 1;
-				ty = (int)ey;
-			}
-			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 20)
-			{
-				if (AABB(ex, ey, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex + 1;
-				ty = (int)ey;
-			}
-			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 22)
-			{
-				if (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex + 1;
-				ty = (int)ey;
-			}
-			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 24)
-			{
-				if (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex + 1;
-				ty = (int)ey;
-			}
-		}
-		--tx;
-		--tile_id;
-	}
-	if ((int)ey != (int)(ey + 0.5f))
-	{
-		++ty;
-		tile_id += room_w;
-		if (prop_c[tile_id] % n_cols == 3 || prop_c[tile_id] % n_cols == 4)
-		{
-			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 18)
-			{
-				if (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 0.5f, 0.5f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx, (float)ty, 0.5f, 0.5f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex;
-				ty = (int)ey + 1;
-			}
-			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 20)
-			{
-				if (AABB(ex, ey, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex;
-				ty = (int)ey + 1;
-			}
-			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 22)
-			{
-				if (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex;
-				ty = (int)ey + 1;
-			}
-			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 24)
-			{
-				if (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex;
-				ty = (int)ey + 1;
-			}
-		}
-		if (ex != (float)(int)ex)
-		{
-			++tx;
-			++tile_id;
-			if (prop_c[tile_id] % n_cols == 3 || prop_c[tile_id] % n_cols == 4)
-			{
-				if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 18)
-				{
-					if (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 0.5f, 0.5f) == 1)
-					{
-						correct_Tile_Collision(e, (float)tx, (float)ty, 0.5f, 0.5f);
-						ex = e->x;
-						ey = e->y + 0.5f;
-					}
-					tx = (int)ex + 1;
-					ty = (int)ey + 1;
-				}
-				if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 20)
-				{
-					if (AABB(ex, ey, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f) == 1)
-					{
-						correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f);
-						ex = e->x;
-						ey = e->y + 0.5f;
-					}
-					tx = (int)ex + 1;
-					ty = (int)ey + 1;
-				}
-				if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 22)
-				{
-					if (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
-					{
-						correct_Tile_Collision(e, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f);
-						ex = e->x;
-						ey = e->y + 0.5f;
-					}
-					tx = (int)ex + 1;
-					ty = (int)ey + 1;
-				}
-				if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 24)
-				{
-					if (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
-					{
-						correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f);
-						ex = e->x;
-						ey = e->y + 0.5f;
-					}
-					tx = (int)ex + 1;
-					ty = (int)ey + 1;
-				}
-			}
-			--tx;
-			--tile_id;
-		}
-		--ty;
-		tile_id -= room_w;
-	}
-
-	if (floor_c[tile_id] % n_cols == 2 && (wall_c[tile_id] != 1 || n_enemies > 0))
+	float ex = e->x + (e->key->width * 0.5f) - 0.1;
+	float ey = e->y + 0.4f;
+	tx = (int)ex;
+	ty = (int)ey;
+	tile_id = ty * room_w + tx;
+	if (floor_c[tile_id] % n_cols == 2 && (wall_c[tile_id] % n_cols != 1 || n_enemies > 0))
 	{
 		if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 2 || floor_c[tile_id] / n_cols == 6 || floor_c[tile_id] / n_cols == 8 || floor_c[tile_id] / n_cols == 12 || floor_c[tile_id] / n_cols == 14 || floor_c[tile_id] / n_cols == 18)
 		{
-			if (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 0.5f, 0.5f) == 1)
-			{
-				correct_Tile_Collision(e, (float)tx, (float)ty, 0.5f, 0.5f);
-				ex = e->x;
-				ey = e->y + 0.5f;
-			}
-			tx = (int)ex;
-			ty = (int)ey;
+			if (AABB(ex, ey, 0.2f, 0.2f, (float)tx, (float)ty, 0.5f, 0.5f)) top_fall = 1;
 		}
 		if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 2 || floor_c[tile_id] / n_cols == 4 || floor_c[tile_id] / n_cols == 8 || floor_c[tile_id] / n_cols == 10 || floor_c[tile_id] / n_cols == 14 || floor_c[tile_id] / n_cols == 20)
 		{
-			if (AABB(ex, ey, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f) == 1)
-			{
-				correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f);
-				ex = e->x;
-				ey = e->y + 0.5f;
-			}
-			tx = (int)ex;
-			ty = (int)ey;
+			if (AABB(ex, ey, 0.2f, 0.2f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f)) top_fall = 1;
 		}
 		if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 4 || floor_c[tile_id] / n_cols == 6 || floor_c[tile_id] / n_cols == 8 || floor_c[tile_id] / n_cols == 12 || floor_c[tile_id] / n_cols == 16 || floor_c[tile_id] / n_cols == 22)
 		{
-			if (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
-			{
-				correct_Tile_Collision(e, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f);
-				ex = e->x;
-				ey = e->y + 0.5f;
-			}
-			tx = (int)ex;
-			ty = (int)ey;
+			if (AABB(ex, ey, 0.2f, 0.2f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f)) top_fall = 1;
 		}
 		if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 2 || floor_c[tile_id] / n_cols == 4 || floor_c[tile_id] / n_cols == 6 || floor_c[tile_id] / n_cols == 10 || floor_c[tile_id] / n_cols == 16 || floor_c[tile_id] / n_cols == 24)
 		{
-			if (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
-			{
-				correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f);
-				ex = e->x;
-				ey = e->y + 0.5f;
-			}
-			tx = (int)ex;
-			ty = (int)ey;
+			if (AABB(ex, ey, 0.2f, 0.2f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f)) top_fall = 1;
 		}
 	}
-	if (ex != (float)(int)ex)
+	
+	int bottom_fall = 0;
+
+	ey = ey + 0.5f;
+	tx = (int)ex;
+	ty = (int)ey;
+	tile_id = ty * room_w + tx;
+
+	if (floor_c[tile_id] % n_cols == 2 && (wall_c[tile_id] % n_cols != 1 || n_enemies > 0))
 	{
-		++tx;
-		++tile_id;
-		if (floor_c[tile_id] % n_cols == 2 && (wall_c[tile_id] != 1 || n_enemies > 0))
+		if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 2 || floor_c[tile_id] / n_cols == 6 || floor_c[tile_id] / n_cols == 8 || floor_c[tile_id] / n_cols == 12 || floor_c[tile_id] / n_cols == 14 || floor_c[tile_id] / n_cols == 18)
 		{
-			if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 2 || floor_c[tile_id] / n_cols == 6 || floor_c[tile_id] / n_cols == 8 || floor_c[tile_id] / n_cols == 12 || floor_c[tile_id] / n_cols == 14 || floor_c[tile_id] / n_cols == 18)
-			{
-				if (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 0.5f, 0.5f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx, (float)ty, 0.5f, 0.5f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex + 1;
-				ty = (int)ey;
-			}
-			if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 2 || floor_c[tile_id] / n_cols == 4 || floor_c[tile_id] / n_cols == 8 || floor_c[tile_id] / n_cols == 10 || floor_c[tile_id] / n_cols == 14 || floor_c[tile_id] / n_cols == 20)
-			{
-				if (AABB(ex, ey, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex + 1;
-				ty = (int)ey;
-			}
-			if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 4 || floor_c[tile_id] / n_cols == 6 || floor_c[tile_id] / n_cols == 8 || floor_c[tile_id] / n_cols == 12 || floor_c[tile_id] / n_cols == 16 || floor_c[tile_id] / n_cols == 22)
-			{
-				if (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex + 1;
-				ty = (int)ey;
-			}
-			if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 2 || floor_c[tile_id] / n_cols == 4 || floor_c[tile_id] / n_cols == 6 || floor_c[tile_id] / n_cols == 10 || floor_c[tile_id] / n_cols == 16 || floor_c[tile_id] / n_cols == 24)
-			{
-				if (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex + 1;
-				ty = (int)ey;
-			}
+			if (AABB(ex, ey, 0.2f, 0.2f, (float)tx, (float)ty, 0.5f, 0.5f)) bottom_fall = 1;
 		}
-		--tx;
-		--tile_id;
+		if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 2 || floor_c[tile_id] / n_cols == 4 || floor_c[tile_id] / n_cols == 8 || floor_c[tile_id] / n_cols == 10 || floor_c[tile_id] / n_cols == 14 || floor_c[tile_id] / n_cols == 20)
+		{
+			if (AABB(ex, ey, 0.2f, 0.2f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f)) bottom_fall = 1;
+		}
+		if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 4 || floor_c[tile_id] / n_cols == 6 || floor_c[tile_id] / n_cols == 8 || floor_c[tile_id] / n_cols == 12 || floor_c[tile_id] / n_cols == 16 || floor_c[tile_id] / n_cols == 22)
+		{
+			if (AABB(ex, ey, 0.2f, 0.2f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f)) bottom_fall = 1;
+		}
+		if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 2 || floor_c[tile_id] / n_cols == 4 || floor_c[tile_id] / n_cols == 6 || floor_c[tile_id] / n_cols == 10 || floor_c[tile_id] / n_cols == 16 || floor_c[tile_id] / n_cols == 24)
+		{
+			if (AABB(ex, ey, 0.2f, 0.2f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f)) bottom_fall = 1;
+		}
 	}
-	if ((int)ey != (int)(ey + 0.5f))
-	{
-		++ty;
-		tile_id += room_w;
-		if (floor_c[tile_id] % n_cols == 2 && (wall_c[tile_id] != 1 || n_enemies > 0))
-		{
-			if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 2 || floor_c[tile_id] / n_cols == 6 || floor_c[tile_id] / n_cols == 8 || floor_c[tile_id] / n_cols == 12 || floor_c[tile_id] / n_cols == 14 || floor_c[tile_id] / n_cols == 18)
-			{
-				if (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 0.5f, 0.5f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx, (float)ty, 0.5f, 0.5f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex;
-				ty = (int)ey + 1;
-			}
-			if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 2 || floor_c[tile_id] / n_cols == 4 || floor_c[tile_id] / n_cols == 8 || floor_c[tile_id] / n_cols == 10 || floor_c[tile_id] / n_cols == 14 || floor_c[tile_id] / n_cols == 20)
-			{
-				if (AABB(ex, ey, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex;
-				ty = (int)ey + 1;
-			}
-			if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 4 || floor_c[tile_id] / n_cols == 6 || floor_c[tile_id] / n_cols == 8 || floor_c[tile_id] / n_cols == 12 || floor_c[tile_id] / n_cols == 16 || floor_c[tile_id] / n_cols == 22)
-			{
-				if (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex;
-				ty = (int)ey + 1;
-			}
-			if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 2 || floor_c[tile_id] / n_cols == 4 || floor_c[tile_id] / n_cols == 6 || floor_c[tile_id] / n_cols == 10 || floor_c[tile_id] / n_cols == 16 || floor_c[tile_id] / n_cols == 24)
-			{
-				if (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex;
-				ty = (int)ey + 1;
-			}
-		}
-		if (ex != (float)(int)ex)
-		{
-			++tx;
-			++tile_id;
-			if (floor_c[tile_id] % n_cols == 2 && (wall_c[tile_id] != 1 || n_enemies > 0))
-			{
-				if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 2 || floor_c[tile_id] / n_cols == 6 || floor_c[tile_id] / n_cols == 8 || floor_c[tile_id] / n_cols == 12 || floor_c[tile_id] / n_cols == 14 || floor_c[tile_id] / n_cols == 18)
-				{
-					if (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 0.5f, 0.5f) == 1)
-					{
-						correct_Tile_Collision(e, (float)tx, (float)ty, 0.5f, 0.5f);
-						ex = e->x;
-						ey = e->y + 0.5f;
-					}
-					tx = (int)ex + 1;
-					ty = (int)ey + 1;
-				}
-				if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 2 || floor_c[tile_id] / n_cols == 4 || floor_c[tile_id] / n_cols == 8 || floor_c[tile_id] / n_cols == 10 || floor_c[tile_id] / n_cols == 14 || floor_c[tile_id] / n_cols == 20)
-				{
-					if (AABB(ex, ey, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f) == 1)
-					{
-						correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f);
-						ex = e->x;
-						ey = e->y + 0.5f;
-					}
-					tx = (int)ex + 1;
-					ty = (int)ey + 1;
-				}
-				if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 4 || floor_c[tile_id] / n_cols == 6 || floor_c[tile_id] / n_cols == 8 || floor_c[tile_id] / n_cols == 12 || floor_c[tile_id] / n_cols == 16 || floor_c[tile_id] / n_cols == 22)
-				{
-					if (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
-					{
-						correct_Tile_Collision(e, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f);
-						ex = e->x;
-						ey = e->y + 0.5f;
-					}
-					tx = (int)ex + 1;
-					ty = (int)ey + 1;
-				}
-				if (floor_c[tile_id] / n_cols == 0 || floor_c[tile_id] / n_cols == 2 || floor_c[tile_id] / n_cols == 4 || floor_c[tile_id] / n_cols == 6 || floor_c[tile_id] / n_cols == 10 || floor_c[tile_id] / n_cols == 16 || floor_c[tile_id] / n_cols == 24)
-				{
-					if (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
-					{
-						correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f);
-						ex = e->x;
-						ey = e->y + 0.5f;
-					}
-					tx = (int)ex + 1;
-					ty = (int)ey + 1;
-				}
-			}
-			--tx;
-			--tile_id;
-		}
-		--ty;
-		tile_id -= room_w;
-	}
+	if (top_fall == 1 && bottom_fall == 1) e->state = FALL;
 }
-
-void check_Air_Collision(int* wall_c, int* prop_c, int room_w, Entity_Instance* e, int n_enemies, int n_cols)
-{
-	float ex = e->x;
-	float ey = e->y + 0.5f;
-	int tx = (int)ex;
-	int ty = (int)ey;
-	int tile_id = ty * room_w + tx;
-
-	if (wall_c[tile_id] == 0 || (wall_c[tile_id] == 1 && n_enemies > 0))
-	{
-		while (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 1.0f, 1.0f) == 1)
-		{
-			correct_Tile_Collision(e, (float)tx, (float)ty, 1.0f, 1.0f);
-			ex = e->x;
-			ey = e->y + 0.5f;
-		}
-		tx = (int)ex;
-		ty = (int)ey;
-	}
-	if (ex != (float)(int)ex)
-	{
-		++tx;
-		++tile_id;
-		if (wall_c[tile_id] == 0 || (wall_c[tile_id] == 1 && n_enemies > 0))
-		{
-			while (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 1.0f, 1.0f) == 1)
-			{
-				correct_Tile_Collision(e, (float)tx, (float)ty, 1.0f, 1.0f);
-				ex = e->x;
-				ey = e->y + 0.5f;
-			}
-			tx = (int)ex + 1;
-			ty = (int)ey;
-		}
-		--tx;
-		--tile_id;
-	}
-	if (ey != (float)(int)(ey + 0.5f))
-	{
-		++ty;
-		tile_id += room_w;
-		if (wall_c[tile_id] == 0 || (wall_c[tile_id] == 1 && n_enemies > 0))
-		{
-			while (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 1.0f, 1.0f) == 1)
-			{
-				correct_Tile_Collision(e, (float)tx, (float)ty, 1.0f, 1.0f);
-				ex = e->x;
-				ey = e->y + 0.5f;
-			}
-			tx = (int)ex;
-			ty = (int)ey + 1;
-		}
-		if (ex != (float)(int)ex)
-		{
-			++tx;
-			++tile_id;
-			if (wall_c[tile_id] == 0 || (wall_c[tile_id] == 1 && n_enemies > 0))
-			{
-				while (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 1.0f, 1.0f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx, (float)ty, 1.0f, 1.0f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex + 1;
-				ty = (int)ey + 1;
-			}
-			--tx;
-			--tile_id;
-		}
-		--ty;
-		tile_id -= room_w;
-	}
-
-	if (prop_c[tile_id] % n_cols == 5 || prop_c[tile_id] % n_cols == 4)
-	{
-		//printf("Greater TL Collision detected! %d\n", prop_c[tile_id] / n_cols);
-		if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 18)
-		{
-			while (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 0.5f, 0.5f) == 1)
-			{
-				correct_Tile_Collision(e, (float)tx, (float)ty, 0.5f, 0.5f);
-				ex = e->x;
-				ey = e->y + 0.5f;
-			}
-			tx = (int)ex;
-			ty = (int)ey;
-		}
-		if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 20)
-		{
-			while (AABB(ex, ey, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f) == 1)
-			{
-				correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f);
-				ex = e->x;
-				ey = e->y + 0.5f;
-			}
-			tx = (int)ex;
-			ty = (int)ey;
-		}
-		if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 22)
-		{
-			while (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
-			{
-				correct_Tile_Collision(e, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f);
-				ex = e->x;
-				ey = e->y + 0.5f;
-			}
-			tx = (int)ex;
-			ty = (int)ey;
-		}
-		if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 24)
-		{
-			while (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
-			{
-				correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f);
-				ex = e->x;
-				ey = e->y + 0.5f;
-			}
-			tx = (int)ex;
-			ty = (int)ey;
-		}
-	}
-	if (ex != (float)(int)ex)
-	{
-		++tx;
-		++tile_id;
-		if (prop_c[tile_id] % n_cols == 5 || prop_c[tile_id] % n_cols == 4)
-		{
-			//printf("Greater TR Collision detected! %d\n", prop_c[tile_id] / n_cols);
-			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 18)
-			{
-				while (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 0.5f, 0.5f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx, (float)ty, 0.5f, 0.5f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex + 1;
-				ty = (int)ey;
-			}
-			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 20)
-			{
-				while (AABB(ex, ey, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex + 1;
-				ty = (int)ey;
-			}
-			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 22)
-			{
-				while (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex + 1;
-				ty = (int)ey;
-			}
-			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 24)
-			{
-				while (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex + 1;
-				ty = (int)ey;
-			}
-		}
-		--tx;
-		--tile_id;
-	}
-	if ((int)ey != (int)(ey + 0.5f))
-	{
-		++ty;
-		tile_id += room_w;
-		if (prop_c[tile_id] % n_cols == 5 || prop_c[tile_id] % n_cols == 4)
-		{
-			//printf("Greater BL Collision detected! %d\n", prop_c[tile_id] / n_cols);
-			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 18)
-			{
-				while (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 0.5f, 0.5f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx, (float)ty, 0.5f, 0.5f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex;
-				ty = (int)ey + 1;
-			}
-			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 20)
-			{
-				while (AABB(ex, ey, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex;
-				ty = (int)ey + 1;
-			}
-			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 22)
-			{
-				while (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex;
-				ty = (int)ey + 1;
-			}
-			if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 24)
-			{
-				while (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
-				{
-					correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f);
-					ex = e->x;
-					ey = e->y + 0.5f;
-				}
-				tx = (int)ex;
-				ty = (int)ey + 1;
-			}
-		}
-		if (ex != (float)(int)ex)
-		{
-			++tx;
-			++tile_id;
-			if (prop_c[tile_id] % n_cols == 5 || prop_c[tile_id] % n_cols == 4)
-			{
-				//printf("Greater BR Collision detected! %d\n", prop_c[tile_id] / n_cols);
-				if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 18)
-				{
-					while (AABB(ex, ey, 1.0f, 0.5f, (float)tx, (float)ty, 0.5f, 0.5f) == 1)
-					{
-						correct_Tile_Collision(e, (float)tx, (float)ty, 0.5f, 0.5f);
-						ex = e->x;
-						ey = e->y + 0.5f;
-					}
-					tx = (int)ex + 1;
-					ty = (int)ey + 1;
-				}
-				if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 14 || prop_c[tile_id] / n_cols == 20)
-				{
-					while (AABB(ex, ey, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f) == 1)
-					{
-						correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty, 0.5f, 0.5f);
-						ex = e->x;
-						ey = e->y + 0.5f;
-					}
-					tx = (int)ex + 1;
-					ty = (int)ey + 1;
-				}
-				if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 8 || prop_c[tile_id] / n_cols == 12 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 22)
-				{
-					while (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
-					{
-						correct_Tile_Collision(e, (float)tx, (float)ty + 0.5f, 0.5f, 0.5f);
-						ex = e->x;
-						ey = e->y + 0.5f;
-					}
-					tx = (int)ex + 1;
-					ty = (int)ey + 1;
-				}
-				if (prop_c[tile_id] / n_cols == 0 || prop_c[tile_id] / n_cols == 2 || prop_c[tile_id] / n_cols == 4 || prop_c[tile_id] / n_cols == 6 || prop_c[tile_id] / n_cols == 10 || prop_c[tile_id] / n_cols == 16 || prop_c[tile_id] / n_cols == 24)
-				{
-					while (AABB(e->x, e->y + 0.5f, 1.0f, 0.5f, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f) == 1)
-					{
-						correct_Tile_Collision(e, (float)tx + 0.5f, (float)ty + 0.5f, 0.5f, 0.5f);
-						ex = e->x;
-						ey = e->y + 0.5f;
-					}
-					tx = (int)ex + 1;
-					ty = (int)ey + 1;
-				}
-			}
-			--tx;
-			--tile_id;
-		}
-		--ty;
-		tile_id -= room_w;
-	}
-}
-
-/*
-void check_Ground_Tile_Collision(int* wall_c, int* prop_c, int* floor_c, int room_w, Entity_Instance* e, int n_enemies)
-{
-	int ix = (int)e->x;
-	int iy = (int)(e->y + 0.5);
-
-	//wall collisions
-	//top left
-	if ((wall_c[iy*room_w + ix] == 0 || (n_enemies > 0 && wall_c[iy*room_w + ix] % 9 == 1)) ||
-		floor_c[iy*room_w + ix] >= 0 || prop_c[iy*room_w + ix] % 9 == 3 || prop_c[iy*room_w + ix] % 9 == 4)
-	{
-		float dif1 = e->x - (float)ix;
-		float dif2 = e->y + 0.5f - (float)iy;
-		if (dif1 > dif2) e->x = (float)(ix + 1);
-		else e->y = (float)iy + 0.5f;
-		ix = (int)e->x;
-		iy = (int)e->y;
-	}
-	if ((float)ix != e->x)
-	{
-		//top right
-		if ((wall_c[iy*room_w + ix + 1] == 0 || (n_enemies > 0 && wall_c[iy*room_w + ix + 1] % 9 == 1)) ||
-			floor_c[iy*room_w + ix + 1] >= 0 || prop_c[iy*room_w + ix + 1] % 9 == 3 || prop_c[iy*room_w + ix + 1] % 9 == 4)
-		{
-			float dif1 = (float)(ix + 1) - e->x;
-			float dif2 = e->y + 0.5f - (float)iy;
-			if (dif1 > dif2) e->x = (float)ix;
-			else e->y = (float)iy + 0.5f;
-			ix = (int)e->x;
-			iy = (int)e->y;
-		}
-	}
-	if ((float)iy != e->y)
-	{
-		iy = (int)e->y + 1;
-		//bottom left
-		if ((wall_c[iy*room_w + ix] == 0 || (n_enemies > 0 && wall_c[iy*room_w + ix] % 9 == 1)) ||
-			floor_c[iy*room_w + ix] >= 0 || prop_c[iy*room_w + ix] % 9 == 3 || prop_c[iy*room_w + ix] % 9 == 4)
-		{
-			float dif1 = e->x - (float)ix;
-			float dif2 = (float)iy - e->y;
-			if (dif1 > dif2) e->x = (float)(ix + 1);
-			else e->y = (float)(iy - 1);
-			ix = (int)e->x;
-			iy = (int)e->y;
-		}
-		if ((float)ix != e->x)
-		{
-			//bottom right
-			if ((wall_c[iy*room_w + ix + 1] == 0 || (n_enemies > 0 && wall_c[iy*room_w + ix + 1] % 9 == 1)) ||
-				floor_c[iy*room_w + ix + 1] >= 0 || prop_c[iy*room_w + ix + 1] % 9 == 3 || prop_c[iy*room_w + ix + 1] % 9 == 4)
-			{
-				float dif1 = (float)(ix + 1) - e->x;
-				float dif2 = (float)iy - e->y;
-				if (dif1 > dif2) e->x = (float)ix;
-				else e->y = (float)(iy - 1);
-				ix = (int)e->x;
-				iy = (int)e->y;
-			}
-		}
-		iy = (int)(e->y + 0.5f);
-	}
-
-}
-
-void check_Air_Tile_Collision(int* wall_c, int* prop_c, int room_w, Entity_Instance* e, int n_enemies)
-{
-	int ix = (int)e->x;
-	int iy = (int)e->y;
-
-	//top left
-	if ((wall_c[iy*room_w + ix] == 0 || (n_enemies > 0 && wall_c[iy*room_w + ix] % 9 == 1)) ||
-		prop_c[iy*room_w + ix] % 9 == 4 || prop_c[iy*room_w + ix] % 9 == 5)
-	{
-		float dif1 = e->x - (float)ix;
-		float dif2 = e->y - (float)iy;
-		if (dif1 > dif2) e->x = (float)(ix + 1);
-		else e->y = (float)(iy + 1);
-		ix = (int)e->x;
-		iy = (int)e->y;
-	}
-	if ((float)ix != e->x)
-	{
-		//top right
-		if ((wall_c[iy*room_w + ix + 1] == 0 || (n_enemies > 0 && wall_c[iy*room_w + ix + 1] % 9 == 1)) ||
-			prop_c[iy*room_w + ix + 1] % 9 == 4 || prop_c[iy*room_w + ix + 1] % 9 == 5)
-		{
-			float dif1 = (float)(ix + 1) - e->x;
-			float dif2 = e->y - (float)iy;
-			if (dif1 > dif2) e->x = (float)ix;
-			else e->y = (float)(iy + 1);
-			ix = (int)e->x;
-			iy = (int)e->y;
-		}
-	}
-
-	if ((float)iy != e->y)
-	{
-		//bottom left
-		if ((wall_c[(iy + 1)*room_w + ix] == 0 || (n_enemies > 0 && wall_c[(iy + 1)*room_w + ix] % 9 == 1)) ||
-			prop_c[(iy + 1)*room_w + ix] % 9 == 4 || prop_c[(iy + 1)*room_w + ix] % 9 == 5)
-		{
-			float dif1 = e->x - (float)ix;
-			float dif2 = (float)(iy + 1) - e->y;
-			if (dif1 > dif2) e->x = (float)(ix + 1);
-			else e->y = (float)iy;
-			ix = (int)e->x;
-			iy = (int)e->y;
-		}
-		if ((float)ix != e->x)
-		{
-			//bottom right
-			if ((wall_c[(iy + 1)*room_w + ix + 1] == 0 || (n_enemies > 0 && wall_c[(iy + 1)*room_w + ix + 1] % 9 == 1)) ||
-				prop_c[(iy + 1)*room_w + ix + 1] % 9 == 4 || prop_c[(iy + 1)*room_w + ix + 1] % 9 == 5)
-			{
-				float dif1 = (float)(ix + 1) - e->x;
-				float dif2 = (float)(iy + 1) - e->y;
-				if (dif1 > dif2) e->x = (float)ix;
-				else e->y = (float)iy;
-				ix = (int)e->x;
-				iy = (int)e->y;
-			}
-		}
-	}
-}
-*/
 
 struct Camera
 {
@@ -2629,7 +1718,7 @@ void draw_Collision_Layer(SDL_Renderer* renderer, SDL_Texture* blue, const int* 
 	}
 }
 
-void draw_Entity_Collision(SDL_Renderer* renderer, SDL_Texture* green, SDL_Texture* red, int box_w, int box_h, const Entity_Instance e, int scale, float atk_range)
+void draw_Entity_Collision(SDL_Renderer* renderer, SDL_Texture* green, SDL_Texture* red, SDL_Texture* blue, int box_w, int box_h, const Entity_Instance e, int scale)
 {
 	SDL_Rect src = { 0, 0, box_w, box_h };
 	SDL_Rect dest = { (int)(e.x * (float)scale), (int)(e.y * (float)scale), e.key->spritesheet->sprite_w, e.key->spritesheet->sprite_h };
@@ -2640,32 +1729,38 @@ void draw_Entity_Collision(SDL_Renderer* renderer, SDL_Texture* green, SDL_Textu
 	{
 		if (e.direction == LEFT)
 		{
-			dest.w = (int)((float)dest.w * atk_range);
+			dest.w = (int)((float)scale * e.key->atk_w);
 			dest.x -= dest.w;
 		}
 		else if (e.direction == RIGHT)
 		{
 			dest.x += dest.w;
-			dest.w = (int)((float)dest.w * atk_range);
+			dest.w = (int)((float)scale * e.key->atk_w);
 		}
 		else if (e.direction == DOWN)
 		{
 			dest.y += dest.h;
-			dest.h = (int)((float)dest.h * atk_range);
+			dest.h = (int)((float)scale * e.key->atk_h);
 		}
 		else if (e.direction == UP)
 		{
-			dest.h = (int)((float)dest.h * atk_range);
+			dest.h = (int)((float)scale * e.key->atk_h);
 			dest.y -= dest.h;
 		}
 		SDL_RenderCopy(renderer, red, &src, &dest);
 	}
+
+	dest = { (int)(e.x * (float)scale), (int)((e.y + 0.5f) * (float)scale), e.key->spritesheet->sprite_w, (int)((float)e.key->spritesheet->sprite_h * 0.5f)};
+
+	SDL_RenderCopy(renderer, blue, &src, &dest);
 }
 
 struct Pixel
 {
 	char r, g, b, a;
 };
+
+enum {MENU = 0, GAME, RESET};
 
 int main(int argc, char** argv)
 {
@@ -2688,8 +1783,12 @@ int main(int argc, char** argv)
 	char d_state = 0;
 	char t_state = 0;
 	char space_state = 0;
+	char esc_state = 0;
+	char lm_state = 0;
 	char prev_t_state = 0;
 	char prev_space_state = 0;
+	char prev_esc_state = 0;
+	char prev_lm_state = 0;
 	int input_order[5] = { 0 };
 	int n_inputs = 0;
 	float atk_range = 0.25;
@@ -2697,6 +1796,7 @@ int main(int argc, char** argv)
 	load_Image_To_Texture(&hud_sheet, renderer, "Assets/Images/HUD_Set.png");
 	int hud_w = 64;
 	int hud_h = 128;
+	int gamestate = MENU;
 
 	//font init
 	Text::Font font = { 0 };
@@ -2705,6 +1805,11 @@ int main(int argc, char** argv)
 	font.font_w = 64;
 	font.font_h = 96;
 	font.n_cols = font.src_w / font.font_w;
+
+	SDL_Texture* menu = NULL;
+	int menu_w = 0;
+	int menu_h = 0;
+	load_Image_And_Size_To_Texture(&menu, &menu_w, &menu_h, renderer, "Assets/Images/Title.png");
 
 	//camera for room movement
 	Camera camera = { 0 };
@@ -2736,6 +1841,10 @@ int main(int argc, char** argv)
 	Entity_Key chicken_key = { 0 };
 	load_Entity_Key(&chicken_key, "Assets/EDS/Chicken.eds", &chicken_sheet, NULL, "Assets/Audio/SFX/Chicken_Attack_Miss.wav", "Assets/Audio/SFX/Chicken_Attack_Hit.wav", NULL);
 	chicken_key.max_hp = 5;
+	chicken_key.width = 1.0f;
+	chicken_key.height = 1.0f;
+	chicken_key.atk_w = 0.75f;
+	chicken_key.atk_h = 0.25f;
 
 	Entity_Instance p1 = { 0 };
 	p1.key = &chicken_key;
@@ -2745,6 +1854,7 @@ int main(int argc, char** argv)
 	p1.direction = DOWN;
 	p1.state = IDLE;
 	p1.curr_hp = p1.key->max_hp;
+	p1.type = GROUND;
 	int player_money = 0;
 
 	Sheet blob_sheet = { 0 };
@@ -2754,6 +1864,10 @@ int main(int argc, char** argv)
 	load_Entity_Key(&blob_key, "Assets/EDS/Blob.eds", &blob_sheet, "Assets/Audio/SFX/Blob_Movement.wav", "Assets/Audio/SFX/Blob_Attack.wav", "Assets/Audio/SFX/Chicken_Attack_Hit.wav", "Assets/Audio/SFX/Enemy_Death.wav");
 	blob_key.speed = 0.05f;
 	blob_key.max_hp = 2;
+	blob_key.width = 1.0f;
+	blob_key.height = 1.0f;
+	blob_key.atk_w = 0.25f;
+	blob_key.atk_h = 0.25f;
 
 	Sheet bat_sheet = { 0 };
 	load_Sheet(&bat_sheet, 64, 64, renderer, "Assets/Images/Bat_Spritesheet.png");
@@ -2762,6 +1876,10 @@ int main(int argc, char** argv)
 	load_Entity_Key(&bat_key, "Assets/EDS/Bat.eds", &bat_sheet, "Assets/Audio/SFX/Bat_Movement.wav", "Assets/Audio/SFX/Bat_Attack.wav", "Assets/Audio/SFX/Chicken_Attack_Hit.wav", "Assets/Audio/SFX/Enemy_Death.wav");
 	bat_key.speed = 0.06f;
 	bat_key.max_hp = 1;
+	bat_key.width = 1.0f;
+	bat_key.height = 1.0f;
+	bat_key.atk_w = 0.25f;
+	bat_key.atk_h = 0.25f;
 
 	Sheet crab_sheet = { 0 };
 	load_Sheet(&crab_sheet, 64, 64, renderer, "Assets/Images/Crab_Spritesheet.png");
@@ -2770,6 +1888,10 @@ int main(int argc, char** argv)
 	load_Entity_Key(&crab_key, "Assets/EDS/Crab.eds", &crab_sheet, NULL, "Assets/Audio/SFX/Chicken_Attack_Miss.wav", "Assets/Audio/SFX/Chicken_Attack_Hit.wav", "Assets/Audio/SFX/Enemy_Death.wav");
 	crab_key.speed = 0.05f;
 	crab_key.max_hp = 2;
+	crab_key.width = 1.0f;
+	crab_key.height = 1.0f;
+	crab_key.atk_w = 0.25f;
+	crab_key.atk_h = 0.25f;
 
 	const int max_enemies = 5;
 	int n_enemies = 0;
@@ -2794,28 +1916,6 @@ int main(int argc, char** argv)
 	int subfloor_rate = 3;
 	unsigned int last_subfloor_update = 0;
 	int curr_subfloor_frame = 0;
-
-	Sheet water_sheet = { 0 };
-	water_sheet.sprite_w = camera.scale;
-	water_sheet.sprite_h = camera.scale;
-	SDL_Surface* recolor = IMG_Load("Assets/Images/Pitfall.png");
-	assert(recolor);
-	SDL_LockSurface(recolor);
-	water_sheet.sheet_w = recolor->w;
-	water_sheet.sheet_h = recolor->h;
-	SDL_UnlockSurface(recolor);
-	water_sheet.n_cols = water_sheet.sheet_w / water_sheet.sprite_w;
-	Pixel* recolor_p = (Pixel*)recolor->pixels;
-	for (int i = 0; i < water_sheet.sheet_w * water_sheet.sheet_h; ++i)
-	{
-		char saved_green = recolor_p[i].g;
-		recolor_p[i].r = recolor_p[i].b * 3;
-		recolor_p[i].g = recolor_p[i].b * 3;
-		recolor_p[i].b = saved_green;
-	}
-	water_sheet.sheet = SDL_CreateTextureFromSurface(renderer, recolor);
-	assert(water_sheet.sheet);
-	SDL_FreeSurface(recolor);
 
 	Sheet dungeon_prop_sheet = { 0 };
 	load_Sheet(&dungeon_prop_sheet, camera.scale, camera.scale, renderer, "Assets/Images/Dungeon_Props.png");
@@ -2848,50 +1948,46 @@ int main(int argc, char** argv)
 	static int locale[5] = { 0 };
 
 	//swap dungeon or beach
+	Mix_Chunk* cave_sound = Mix_LoadWAV("Assets/Audio/Ambient/Drip Cave.wav");
+	Mix_Chunk* beach_sound = Mix_LoadWAV("Assets/Audio/Ambient/Windy.wav");
+	Mix_Chunk* ambient = beach_sound;
 	int map_choice = rand() % 2;
 	Map_Key* terrain_key = &beach_key;
-	Sheet* subfloor = &water_sheet;
+	Sheet* subfloor = &subfloor_sheet;
 	Sheet* prop_sheet = &beach_prop_sheet;
 	Entity_Key* ground_enemy = &crab_key;
 	if (map_choice == 1)
 	{
 		dungeon_map.src_sheet = &dungeon_sheet;
 		terrain_key = &dungeon_key;
-		subfloor = &subfloor_sheet;
 		prop_sheet = &dungeon_prop_sheet;
 		ground_enemy = &blob_key;
+		ambient = cave_sound;
 	}
 
 	locale[MID] = generate_Map(&dungeon_map, 3, 3, *terrain_key);
-	if (map_choice == 0) for (int i = 0; i < 9; ++i) dungeon_map.subfloor_type[i] = 1;
+	if (map_choice == 0) for (int i = 0; i < 9; ++i) dungeon_map.subfloor_type[i] = 4;
 	locale[LEFT] = locale[MID] - 1;
 	locale[RIGHT] = locale[MID] + 1;
 	locale[DOWN] = locale[MID] + dungeon_map.map_w;
 	locale[UP] = locale[MID] - dungeon_map.map_w;
 	++dungeon_map.visited[locale[MID]];
-
-	Mix_Chunk* ambient = NULL;
-	if (map_choice == 0) ambient = Mix_LoadWAV("Assets/Audio/Ambient/Windy.wav");
-	else ambient = Mix_LoadWAV("Assets/Audio/Ambient/Drip Cave.wav");
-	Mix_PlayChannel(-1, ambient, -1);
 	
 	Mix_Chunk* door_close = Mix_LoadWAV("Assets/Audio/SFX/Spike_Fwip.wav");
-
-	int test_toggle = -1; 
 
 	for (;;)
 	{
 		curr_time = SDL_GetTicks();
 		if (1000.0 / (curr_time - last_update_time) <= max_framerate || max_framerate <= 0)
 		{
-			//printf("%d\n", test_toggle);
-			//test_toggle *= -1;
-
 			//update system
 			last_update_time = curr_time;
 			prev_direction = direction;
 			prev_t_state = t_state;
 			prev_space_state = space_state;
+			prev_esc_state = esc_state;
+			prev_lm_state = lm_state;
+
 			SDL_Event event;
 			while (SDL_PollEvent(&event) == 1)
 			{
@@ -2899,7 +1995,7 @@ int main(int argc, char** argv)
 				else if (event.type == SDL_KEYDOWN)
 				{
 					char key = event.key.keysym.sym;
-					if (key == SDLK_ESCAPE) exit(0);
+					if (key == SDLK_ESCAPE) esc_state = 1;
 					else if (key == SDLK_w)
 					{
 						++n_inputs;
@@ -2930,7 +2026,8 @@ int main(int argc, char** argv)
 				else if (event.type == SDL_KEYUP)
 				{
 					char key = event.key.keysym.sym;
-					if (key == SDLK_w)
+					if (key == SDLK_ESCAPE) esc_state = 0;
+					else if (key == SDLK_w)
 					{
 						int order_pos = input_order[UP];
 						input_order[UP] = 0;
@@ -2961,452 +2058,516 @@ int main(int argc, char** argv)
 					else if (key == SDLK_t) t_state = 0;
 					else if (key == SDLK_SPACE) space_state = 0;
 				}
+				else if (event.type == SDL_MOUSEBUTTONUP) lm_state = 0;
+				else if (event.type == SDL_MOUSEBUTTONDOWN) lm_state = 1;
 			}
 
-			int last_pressed = 0;
-			for (int i = 1; i < 5; ++i) if (input_order[i] > input_order[last_pressed]) last_pressed = i;
+			int mx = 0;
+			int my = 0;
+			SDL_GetMouseState(&mx, &my);
 
-			if (t_state == 1 && prev_t_state == 0) debug_toggle *= -1;
-
-			//input physics
-			if (direction == MID)
+			if (esc_state == 1 && prev_esc_state == 0)
 			{
-				if (space_state == 1 && prev_space_state == 0 && (p1.state == IDLE || p1.state == WALK))
-				{
-					Mix_PlayChannel(-1, p1.key->atk_s, 0);
-					p1.state = ATTACK;
-				}
-				else
-				{
-					if (p1.state != ATTACK && p1.state != DAMAGE && p1.state != DYING && p1.state != FALL && p1.state != DEAD)
-					{
-						p1.state = IDLE;
-						if (last_pressed == LEFT)
-						{
-							p1.state = WALK;
-							p1.direction = LEFT;
-							p1.x -= p1.key->speed;
-						}
-						else if (last_pressed == RIGHT)
-						{
-							p1.state = WALK;
-							p1.direction = RIGHT;
-							p1.x += p1.key->speed;
-						}
-						else if (last_pressed == DOWN)
-						{
-							p1.state = WALK;
-							p1.direction = DOWN;
-							p1.y += p1.key->speed;
-						}
-						else if (last_pressed == UP)
-						{
-							p1.state = WALK;
-							p1.direction = UP;
-							p1.y -= p1.key->speed;
-						}
-					}
-					else if (p1.state == DEAD)
-					{
-						//reset enemies
-						n_enemies = 0;
-						for (int i = 0; i < max_enemies; ++i) enemies[i].state = DEAD;
-						//reset player
-						p1.state = IDLE;
-						p1.curr_hp = p1.key->max_hp;
-						p1.x = dungeon_map.room_w * 0.5f - 0.5f;
-						p1.y = dungeon_map.room_h * 0.5f - 0.5f;
-						player_money = 0;
+				if (gamestate == GAME) gamestate = RESET;
+				else exit(0);
+			}
 
-						//reset map
-						map_choice = rand() % 2;
-						terrain_key = &beach_key;
-						subfloor = &water_sheet;
-						prop_sheet = &beach_prop_sheet;
-						ground_enemy = &crab_key;
-						if (map_choice == 1)
-						{
-							dungeon_map.src_sheet = &dungeon_sheet;
-							terrain_key = &dungeon_key;
-							subfloor = &subfloor_sheet;
-							prop_sheet = &dungeon_prop_sheet;
-							ground_enemy = &blob_key;
-						}
-						locale[MID] = generate_Map(&dungeon_map, 3, 3, *terrain_key);
-						if (map_choice == 0) for (int i = 0; i < 9; ++i) dungeon_map.subfloor_type[i] = 1;
-						locale[LEFT] = locale[MID] - 1;
-						locale[RIGHT] = locale[MID] + 1;
-						locale[DOWN] = locale[MID] + dungeon_map.map_w;
-						locale[UP] = locale[MID] - dungeon_map.map_w;
-						++dungeon_map.visited[locale[MID]];
-					}
-				}
-				if (n_enemies <= 0)
+			if (gamestate == MENU)
+			{
+				SDL_Rect button = { 860, 550, 128, 64 };
+				if (lm_state == 0 && prev_lm_state == 1 && AABB((float)mx, (float)my, 0.0f, 0.0f, (float)button.x, (float)button.y, (float)button.w, (float)button.h) == 1)
 				{
-					if (p1.y < 0.0 && locale[UP] >= 0)
-					{
-						direction = UP;
-						--camera.map_y;
-					}
-					else if (p1.x < 0.0 && locale[LEFT] % dungeon_map.map_w >= 0)
-					{
-						direction = LEFT;
-						--camera.map_x;
-					}
-					else if (p1.y > dungeon_map.room_h - 1 && locale[DOWN] / dungeon_map.map_w <= dungeon_map.map_h)
-					{
-						direction = DOWN;
-						++camera.map_y;
-					}
-					else if (p1.x > dungeon_map.room_w - 1 && locale[RIGHT] % dungeon_map.map_w <= dungeon_map.map_w)
-					{
-						direction = RIGHT;
-						++camera.map_x;
-					}
+					gamestate = GAME;
+					Mix_PlayChannel(1, ambient, -1);
+					continue;
 				}
 
-				//AI behaviour
-				for (int i = 0; i < max_enemies; ++i)
-				{
-					if (enemies[i].state != DAMAGE && enemies[i].state != DYING && enemies[i].state != FALL && enemies[i].state != DEAD)
-					{
-						if (enemies[i].type == GROUND)
-						{
-							move_Ground_Entity(&enemies[i], dungeon_map.wall_collisions[locale[MID]], dungeon_map.ground_collisions[locale[MID]],
-								dungeon_map.prop_collisions[locale[MID]], dungeon_map.room_w, dungeon_map.room_h, p1.x, p1.y);
-						}
-						else if (enemies[i].type == AIR)
-						{
-							move_Air_Entity(&enemies[i], dungeon_map.wall_collisions[locale[MID]],
-								dungeon_map.prop_collisions[locale[MID]], dungeon_map.room_w, dungeon_map.room_h, p1.x, p1.y);
-						}
-					}
-				}
+				SDL_RenderClear(renderer);
 
-				//combat
-				if (p1.state == ATTACK)
+				SDL_Rect menu_src = { 0, 0, menu_w, menu_h };
+				SDL_Rect menu_dest = { 0, 0, window_w, window_h };
+				SDL_RenderCopy(renderer, menu, &menu_src, &menu_dest);
+
+				menu_src = { 192, 0, 128, 64 };
+				if (lm_state == 1 && AABB((float)mx, (float)my, 0.0f, 0.0f, (float)button.x, (float)button.y, (float)button.w, (float)button.h) == 1) menu_src.y = 64;
+				SDL_RenderCopy(renderer, hud_sheet, &menu_src, &button);
+
+				Text::draw_Text(renderer, "Start", button.x + 18, button.y + 24, window_w, &font, 18);
+
+				SDL_RenderPresent(renderer);
+			}
+
+			if (gamestate == GAME)
+			{
+				int last_pressed = 0;
+				for (int i = 1; i < 5; ++i) if (input_order[i] > input_order[last_pressed]) last_pressed = i;
+
+				if (t_state == 1 && prev_t_state == 0) debug_toggle *= -1;
+
+				//input physics
+				if (direction == MID)
 				{
-					int n_hits = 0;
-					for (int i = 0; i < max_enemies; ++i)
+					if (space_state == 1 && prev_space_state == 0 && (p1.state == IDLE || p1.state == WALK))
 					{
-						if (enemies[i].state != DEAD && enemies[i].state != DAMAGE && enemies[i].state != DYING && enemies[i].state != FALL)
-						{
-							if (check_Hit_Collision(&enemies[i], p1, atk_range) == 2) ++n_hits;
-						}
+						Mix_PlayChannel(-1, p1.key->atk_s, 0);
+						p1.state = ATTACK;
 					}
-					player_money += n_hits * (rand() % 10);
-					n_enemies -= n_hits;
-				}
-				if (p1.state != DEAD && p1.state != DAMAGE && p1.state != DYING && p1.state != FALL)
-				{
-					for (int i = 0; i < max_enemies; ++i)
+					else
 					{
-						if (enemies[i].state == ATTACK)
+						if (p1.state != ATTACK && p1.state != DAMAGE && p1.state != DYING && p1.state != FALL && p1.state != DEAD)
 						{
-							int facing = F_SIDE;
-							if (enemies[i].direction == DOWN) facing = F_DOWN;
-							else if (enemies[i].direction == UP) facing = F_UP;
-							if (enemies[i].curr_frame > enemies[i].key->atk_start[facing] + 1 && enemies[i].curr_frame <= enemies[i].key->atk_end[facing])
+							p1.state = IDLE;
+							if (last_pressed == LEFT)
 							{
-								check_Hit_Collision(&p1, enemies[i], atk_range);
+								p1.state = WALK;
+								p1.direction = LEFT;
+								p1.x -= p1.key->speed;
+							}
+							else if (last_pressed == RIGHT)
+							{
+								p1.state = WALK;
+								p1.direction = RIGHT;
+								p1.x += p1.key->speed;
+							}
+							else if (last_pressed == DOWN)
+							{
+								p1.state = WALK;
+								p1.direction = DOWN;
+								p1.y += p1.key->speed;
+							}
+							else if (last_pressed == UP)
+							{
+								p1.state = WALK;
+								p1.direction = UP;
+								p1.y -= p1.key->speed;
+							}
+						}
+						else if (p1.state == DEAD)
+						{
+							gamestate = RESET;
+							continue;
+						}
+					}
+					if (n_enemies <= 0)
+					{
+						if (p1.y < 0.0 && locale[UP] >= 0)
+						{
+							direction = UP;
+							--camera.map_y;
+						}
+						else if (p1.x < 0.0 && locale[LEFT] % dungeon_map.map_w >= 0)
+						{
+							direction = LEFT;
+							--camera.map_x;
+						}
+						else if (p1.y > dungeon_map.room_h - 1 && locale[DOWN] / dungeon_map.map_w <= dungeon_map.map_h)
+						{
+							direction = DOWN;
+							++camera.map_y;
+						}
+						else if (p1.x > dungeon_map.room_w - 1 && locale[RIGHT] % dungeon_map.map_w <= dungeon_map.map_w)
+						{
+							direction = RIGHT;
+							++camera.map_x;
+						}
+					}
+
+					//AI behaviour
+					if (p1.state != DYING && p1.state != FALL && p1.state != DEAD)
+					{
+						for (int i = 0; i < max_enemies; ++i)
+						{
+							if (enemies[i].state != DAMAGE && enemies[i].state != DYING && enemies[i].state != FALL && enemies[i].state != DEAD)
+							{
+								if (enemies[i].type == GROUND)
+								{
+									move_Ground_Entity(&enemies[i], dungeon_map.wall_collisions[locale[MID]], dungeon_map.ground_collisions[locale[MID]],
+										dungeon_map.prop_collisions[locale[MID]], dungeon_map.room_w, dungeon_map.room_h, p1.x, p1.y);
+								}
+								else if (enemies[i].type == AIR)
+								{
+									move_Air_Entity(&enemies[i], dungeon_map.wall_collisions[locale[MID]],
+										dungeon_map.prop_collisions[locale[MID]], dungeon_map.room_w, dungeon_map.room_h, p1.x, p1.y);
+								}
 							}
 						}
 					}
-				}
 
-				//collisions
-				check_Ground_Collision(dungeon_map.wall_collisions[locale[MID]], dungeon_map.prop_collisions[locale[MID]], dungeon_map.ground_collisions[locale[MID]], dungeon_map.room_w, &p1, n_enemies, collision_sheet.n_cols);
-				for (int i = 0; i < max_enemies; ++i)
-				{
-					if (enemies[i].state != DEAD)
+					//combat
+					if (p1.state == ATTACK)
 					{
-						if (enemies[i].type == GROUND) check_Ground_Collision(dungeon_map.wall_collisions[locale[MID]], dungeon_map.prop_collisions[locale[MID]], dungeon_map.ground_collisions[locale[MID]], dungeon_map.room_w, &enemies[i], n_enemies, collision_sheet.n_cols);
-						else check_Air_Collision(dungeon_map.wall_collisions[locale[MID]], dungeon_map.prop_collisions[locale[MID]], dungeon_map.room_w, &p1, n_enemies, collision_sheet.n_cols);
-					}
-				}
-			}
-			else
-			{
-				//camera room panning
-				p1.state = IDLE;
-				if (direction == UP)
-				{
-					if (p1.y > -3.0f)
-					{
-						p1.state = WALK;
-						p1.direction = UP;
-						p1.y = p1.y - p1.key->speed;
-					}
-					camera.y = camera.y - camera.speed;
-					if (camera.y <= -1.0f)
-					{
-						camera.y = 0.0f;
-						for (int i = 0; i < 5; i++) locale[i] -= dungeon_map.map_w;
-						p1.y = (float)dungeon_map.room_h - 3.0f;
-						direction = MID;
-					}
-				}
-				else if (direction == DOWN)
-				{
-					if (p1.y < dungeon_map.room_h + 2.0f)
-					{
-						p1.state = WALK;
-						p1.direction = DOWN;
-						p1.y = p1.y + p1.key->speed;
-					}
-					camera.y = camera.y + camera.speed;
-					if (camera.y >= 1.0f)
-					{
-						camera.y = 0.0;
-						for (int i = 0; i < 5; i++) locale[i] += dungeon_map.map_w;
-						p1.y = 2.0f;
-						direction = MID;
-					}
-				}
-				else if (direction == LEFT)
-				{
-					if (p1.x > -3.0f)
-					{
-						p1.state = WALK;
-						p1.direction = LEFT;
-						p1.x = p1.x - p1.key->speed;
-					}
-					camera.x = camera.x - camera.speed;
-					if (camera.x <= -1.0f)
-					{
-						camera.x = 0.0f;
-						for (int i = 0; i < 5; i++) locale[i] -= 1;
-						p1.x = dungeon_map.room_w - 3.0f;
-						direction = MID;
-					}
-				}
-				else if (direction == RIGHT)
-				{
-					if (p1.x < dungeon_map.room_w + 2.0f)
-					{
-						p1.state = WALK;
-						p1.direction = RIGHT;
-						p1.x = p1.x + p1.key->speed;
-					}
-					camera.x = camera.x + camera.speed;
-					if (camera.x >= 1.0f)
-					{
-						camera.x = 0.0f;
-						for (int i = 0; i < 5; i++) locale[i] += 1;
-						p1.x = 2.0f;
-						direction = MID;
-					}
-				}
-
-				//spawn enemies in unvisitted room
-				if (prev_direction != direction && dungeon_map.visited[locale[MID]] <= 0)
-				{
-					++dungeon_map.visited[locale[MID]];
-					int n_spawned_enemies = rand() % max_enemies; //random # enemies per room
-					if (n_spawned_enemies > 0) Mix_PlayChannel(-1, door_close, 0);
-					for (int i = 0; i < n_spawned_enemies; ++i)
-					{
-						int rand_room = -1;
-						while (rand_room < 0 || dungeon_map.spawns[locale[MID]][rand_room].x <= 0)
+						int n_hits = 0;
+						for (int i = 0; i < max_enemies; ++i)
 						{
-							rand_room = rand() % dungeon_map.n_spawn_points[locale[MID]];
+							if (enemies[i].state != DEAD && enemies[i].state != DAMAGE && enemies[i].state != DYING && enemies[i].state != FALL)
+							{
+								if (check_Hit_Collision(&enemies[i], p1, atk_range) == 2) ++n_hits;
+							}
 						}
-						enemies[i].type = rand() % 2;
-						if (enemies[i].type == GROUND) enemies[i].key = ground_enemy;
-						else enemies[i].key = &bat_key;
-						enemies[i].state = IDLE;
-						enemies[i].direction = DOWN;
-						enemies[i].x = (float)dungeon_map.spawns[locale[MID]][rand_room].x;
-						enemies[i].y = (float)dungeon_map.spawns[locale[MID]][rand_room].y;
-						enemies[i].curr_hp = enemies[i].key->max_hp;
-						++n_enemies;
-						dungeon_map.spawns[locale[MID]][rand_room].x = 0;
+						player_money += n_hits * (rand() % 10);
+						n_enemies -= n_hits;
 					}
-				}
-			}
-			
-			//update animations
-			for (int i = 0; i < max_enemies; ++i) if (enemies[i].state > 0) update_Animation(&enemies[i], curr_time);
-			update_Animation(&p1, curr_time);
-			if (1000.0 / (curr_time - last_subfloor_update) <= subfloor_rate || subfloor_rate <= 0)
-			{
-				last_subfloor_update = curr_time;
-				if (curr_subfloor_frame >= 3) curr_subfloor_frame = 0;
-				else ++curr_subfloor_frame;
-			}
-
-			//draw
-			SDL_RenderClear(renderer);
-			if (direction == MID)
-			{
-				SDL_Rect backdrop_src = { 0 };
-				if (dungeon_map.subfloor_type[locale[MID]] == 0) backdrop_src = { curr_subfloor_frame * 64, 0, 64, 64 };
-				else if (dungeon_map.subfloor_type[locale[MID]] == 1) backdrop_src = { curr_subfloor_frame * 64, 64, 64, 64 };
-				else if (dungeon_map.subfloor_type[locale[MID]] == 2) backdrop_src = { 0, 128, 64, 64 };
-				else backdrop_src = { 128, 128, 64, 64 };
-				SDL_Rect backdrop_dest = { 0, 0, 64, 64 };
-				for (int y = 0; y < dungeon_map.room_h; ++y)
-				{
-					for (int x = 0; x < dungeon_map.room_w; ++x)
+					if (p1.state != DEAD && p1.state != DAMAGE && p1.state != DYING && p1.state != FALL)
 					{
-						SDL_RenderCopy(renderer, subfloor->sheet, &backdrop_src, &backdrop_dest);
-						backdrop_dest.x += 64;
+						n_enemies = 0;
+						for (int i = 0; i < max_enemies; ++i)
+						{
+							if (enemies[i].state != DEAD && enemies[i].state != DYING && enemies[i].state != FALL) ++n_enemies;
+							if (enemies[i].state == ATTACK)
+							{
+								int facing = F_SIDE;
+								if (enemies[i].direction == DOWN) facing = F_DOWN;
+								else if (enemies[i].direction == UP) facing = F_UP;
+								if (enemies[i].curr_frame > enemies[i].key->atk_start[facing] + 1 && enemies[i].curr_frame <= enemies[i].key->atk_end[facing])
+								{
+									check_Hit_Collision(&p1, enemies[i], atk_range);
+								}
+							}
+						}
 					}
-					backdrop_dest.x = 0;
-					backdrop_dest.y += 64;
-				}
 
-				draw_Room_Layer(renderer, dungeon_map.ground[locale[MID]],
-					dungeon_map.src_sheet, dungeon_map.room_w, dungeon_map.room_h, camera.scale);
-				draw_Room_Layer(renderer, dungeon_map.props[locale[MID]],
-					prop_sheet, dungeon_map.room_w, dungeon_map.room_h, camera.scale);
-				for (int i = 0; i < max_enemies; ++i)
-				{
-					if (enemies[i].state != DEAD) draw_Entity_Instance(renderer, enemies[i], camera.scale);
-				}
-				if (map_choice == 0 && n_enemies == 0)
-				{
-					draw_Room_Layer(renderer, dungeon_map.walls[locale[MID]],
-						dungeon_map.src_sheet, dungeon_map.room_w, dungeon_map.room_h, camera.scale);
-				}
-				if (p1.state == ATTACK)
-				{
-					SDL_Rect atk_dest = { (int)((p1.x - 1.0f) * 64), (int)((p1.y - 1.0f) * 64), 192, 192 };
-					SDL_Rect atk_src = { 0 };
-					if (p1.direction == LEFT || p1.direction == RIGHT) atk_src = { 192 * (p1.curr_frame - p1.key->atk_start[F_SIDE]), 0, 192, 192 };
-					else if (p1.direction == DOWN) atk_src = { 192 * (p1.curr_frame - p1.key->atk_start[F_DOWN]), 192, 192, 192 };
-					else atk_src = { 192 * (p1.curr_frame - p1.key->atk_start[F_UP]), 384, 192, 192 };
-
-					if (p1.direction == RIGHT) SDL_RenderCopyEx(renderer, chicken_attack.sheet, &atk_src, &atk_dest, 0, NULL, SDL_FLIP_HORIZONTAL);
-					else SDL_RenderCopy(renderer, chicken_attack.sheet, &atk_src, &atk_dest);
-				}
-				else draw_Entity_Instance(renderer, p1, camera.scale);
-				if (map_choice != 0)
-				{
-					if (n_enemies > 0)
-					{
-						SDL_Rect door_src = { 0, 0, 128, 64 };
-						SDL_Rect door_dest = { 7 * 64, 64, 128, 64 };
-						SDL_RenderCopy(renderer, dungeon_sheet.sheet, &door_src, &door_dest);
-
-						door_src.y += 64;
-						door_dest.y += 9 * 64;
-						SDL_RenderCopy(renderer, dungeon_sheet.sheet, &door_src, &door_dest);
-
-						door_src = { 128, 128, 64, 128 };
-						door_dest = { 64, 5 * 64, 64, 128 };
-						SDL_RenderCopy(renderer, dungeon_sheet.sheet, &door_src, &door_dest);
-
-						door_src.x += 64;
-						door_dest.x += 13 * 64;
-						SDL_RenderCopy(renderer, dungeon_sheet.sheet, &door_src, &door_dest);
-					}
-					draw_Room_Layer(renderer, dungeon_map.walls[locale[MID]],
-						dungeon_map.src_sheet, dungeon_map.room_w, dungeon_map.room_h, camera.scale);
-				}
-
-				//draw collisions for debug
-				if (debug_toggle == 1)
-				{
-					draw_Room_Layer(renderer, dungeon_map.ground_collisions[locale[MID]], &collision_sheet, dungeon_map.room_w, dungeon_map.room_h, camera.scale);
-					draw_Room_Layer(renderer, dungeon_map.prop_collisions[locale[MID]], &collision_sheet, dungeon_map.room_w, dungeon_map.room_h, camera.scale);
-					draw_Room_Layer(renderer, dungeon_map.wall_collisions[locale[MID]], &collision_sheet, dungeon_map.room_w, dungeon_map.room_h, camera.scale);
-					draw_Entity_Collision(renderer, green, red, col_box_w, col_box_h, p1, camera.scale, atk_range);
+					//collisions
+					check_Collision(&p1, dungeon_map.wall_collisions[locale[MID]], dungeon_map.prop_collisions[locale[MID]], dungeon_map.ground_collisions[locale[MID]], dungeon_map.room_w, n_enemies, collision_sheet.n_cols);
 					for (int i = 0; i < max_enemies; ++i)
 					{
-						if (enemies[i].state != DEAD) draw_Entity_Collision(renderer, green, red, col_box_w, col_box_h, enemies[i], camera.scale, atk_range);
+						if (enemies[i].state != DEAD)
+						{
+							check_Collision(&enemies[i], dungeon_map.wall_collisions[locale[MID]], dungeon_map.prop_collisions[locale[MID]], dungeon_map.ground_collisions[locale[MID]], dungeon_map.room_w, n_enemies, collision_sheet.n_cols);
+						}
 					}
 				}
+				else
+				{
+					//camera room panning
+					p1.state = IDLE;
+					if (direction == UP)
+					{
+						if (p1.y > -3.0f)
+						{
+							p1.state = WALK;
+							p1.direction = UP;
+							p1.y = p1.y - p1.key->speed;
+						}
+						camera.y = camera.y - camera.speed;
+						if (camera.y <= -1.0f)
+						{
+							camera.y = 0.0f;
+							for (int i = 0; i < 5; i++) locale[i] -= dungeon_map.map_w;
+							p1.y = (float)dungeon_map.room_h - 3.0f;
+							direction = MID;
+						}
+					}
+					else if (direction == DOWN)
+					{
+						if (p1.y < dungeon_map.room_h + 2.0f)
+						{
+							p1.state = WALK;
+							p1.direction = DOWN;
+							p1.y = p1.y + p1.key->speed;
+						}
+						camera.y = camera.y + camera.speed;
+						if (camera.y >= 1.0f)
+						{
+							camera.y = 0.0;
+							for (int i = 0; i < 5; i++) locale[i] += dungeon_map.map_w;
+							p1.y = 2.0f;
+							direction = MID;
+						}
+					}
+					else if (direction == LEFT)
+					{
+						if (p1.x > -3.0f)
+						{
+							p1.state = WALK;
+							p1.direction = LEFT;
+							p1.x = p1.x - p1.key->speed;
+						}
+						camera.x = camera.x - camera.speed;
+						if (camera.x <= -1.0f)
+						{
+							camera.x = 0.0f;
+							for (int i = 0; i < 5; i++) locale[i] -= 1;
+							p1.x = dungeon_map.room_w - 3.0f;
+							direction = MID;
+						}
+					}
+					else if (direction == RIGHT)
+					{
+						if (p1.x < dungeon_map.room_w + 2.0f)
+						{
+							p1.state = WALK;
+							p1.direction = RIGHT;
+							p1.x = p1.x + p1.key->speed;
+						}
+						camera.x = camera.x + camera.speed;
+						if (camera.x >= 1.0f)
+						{
+							camera.x = 0.0f;
+							for (int i = 0; i < 5; i++) locale[i] += 1;
+							p1.x = 2.0f;
+							direction = MID;
+						}
+					}
+
+					//spawn enemies in unvisitted room
+					if (prev_direction != direction && dungeon_map.visited[locale[MID]] <= 0)
+					{
+						++dungeon_map.visited[locale[MID]];
+						int n_spawned_enemies = rand() % max_enemies; //random # enemies per room
+						if (n_spawned_enemies > 0) Mix_PlayChannel(-1, door_close, 0);
+						for (int i = 0; i < n_spawned_enemies; ++i)
+						{
+							int rand_room = -1;
+							while (rand_room < 0 || dungeon_map.spawns[locale[MID]][rand_room].x <= 0)
+							{
+								rand_room = rand() % dungeon_map.n_spawn_points[locale[MID]];
+							}
+							enemies[i].type = rand() % 2;
+							if (enemies[i].type == GROUND) enemies[i].key = ground_enemy;
+							else enemies[i].key = &bat_key;
+							enemies[i].state = IDLE;
+							enemies[i].direction = DOWN;
+							enemies[i].x = (float)dungeon_map.spawns[locale[MID]][rand_room].x;
+							enemies[i].y = (float)dungeon_map.spawns[locale[MID]][rand_room].y;
+							enemies[i].curr_hp = enemies[i].key->max_hp;
+							++n_enemies;
+							dungeon_map.spawns[locale[MID]][rand_room].x = 0;
+						}
+					}
+				}
+
+				//update animations
+				for (int i = 0; i < max_enemies; ++i) if (enemies[i].state > 0) update_Animation(&enemies[i], curr_time);
+				update_Animation(&p1, curr_time);
+				if (1000.0 / (curr_time - last_subfloor_update) <= subfloor_rate || subfloor_rate <= 0)
+				{
+					last_subfloor_update = curr_time;
+					if (curr_subfloor_frame >= 3) curr_subfloor_frame = 0;
+					else ++curr_subfloor_frame;
+				}
+
+				//draw
+				SDL_RenderClear(renderer);
+				if (direction == MID)
+				{
+					SDL_Rect backdrop_src = { 0 };
+					if (dungeon_map.subfloor_type[locale[MID]] == 0) backdrop_src = { curr_subfloor_frame * 64, 0, 64, 64 };
+					else if (dungeon_map.subfloor_type[locale[MID]] == 1) backdrop_src = { curr_subfloor_frame * 64, 64, 64, 64 };
+					else if (dungeon_map.subfloor_type[locale[MID]] == 2) backdrop_src = { 0, 128, 64, 64 };
+					else if (dungeon_map.subfloor_type[locale[MID]] == 3) backdrop_src = { 128, 128, 64, 64 };
+					else backdrop_src = { curr_subfloor_frame * 64, 192, 64, 64 };
+					SDL_Rect backdrop_dest = { 0, 0, 64, 64 };
+					for (int y = 0; y < dungeon_map.room_h; ++y)
+					{
+						for (int x = 0; x < dungeon_map.room_w; ++x)
+						{
+							SDL_RenderCopy(renderer, subfloor->sheet, &backdrop_src, &backdrop_dest);
+							backdrop_dest.x += 64;
+						}
+						backdrop_dest.x = 0;
+						backdrop_dest.y += 64;
+					}
+
+					draw_Room_Layer(renderer, dungeon_map.ground[locale[MID]],
+						dungeon_map.src_sheet, dungeon_map.room_w, dungeon_map.room_h, camera.scale);
+					draw_Room_Layer(renderer, dungeon_map.props[locale[MID]],
+						prop_sheet, dungeon_map.room_w, dungeon_map.room_h, camera.scale);
+					for (int i = 0; i < max_enemies; ++i)
+					{
+						if (enemies[i].state != DEAD) draw_Entity_Instance(renderer, enemies[i], camera.scale);
+					}
+					if (map_choice == 0 && n_enemies == 0)
+					{
+						draw_Room_Layer(renderer, dungeon_map.walls[locale[MID]],
+							dungeon_map.src_sheet, dungeon_map.room_w, dungeon_map.room_h, camera.scale);
+					}
+					if (p1.state == ATTACK)
+					{
+						SDL_Rect atk_dest = { (int)((p1.x - 1.0f) * 64), (int)((p1.y - 1.0f) * 64), 192, 192 };
+						SDL_Rect atk_src = { 0 };
+						if (p1.direction == LEFT || p1.direction == RIGHT) atk_src = { 192 * (p1.curr_frame - p1.key->atk_start[F_SIDE]), 0, 192, 192 };
+						else if (p1.direction == DOWN) atk_src = { 192 * (p1.curr_frame - p1.key->atk_start[F_DOWN]), 192, 192, 192 };
+						else atk_src = { 192 * (p1.curr_frame - p1.key->atk_start[F_UP]), 384, 192, 192 };
+
+						if (p1.direction == RIGHT) SDL_RenderCopyEx(renderer, chicken_attack.sheet, &atk_src, &atk_dest, 0, NULL, SDL_FLIP_HORIZONTAL);
+						else SDL_RenderCopy(renderer, chicken_attack.sheet, &atk_src, &atk_dest);
+					}
+					else draw_Entity_Instance(renderer, p1, camera.scale);
+					if (map_choice != 0)
+					{
+						if (n_enemies > 0)
+						{
+							SDL_Rect door_src = { 0, 0, 128, 64 };
+							SDL_Rect door_dest = { 7 * 64, 64, 128, 64 };
+							SDL_RenderCopy(renderer, dungeon_sheet.sheet, &door_src, &door_dest);
+
+							door_src.y += 64;
+							door_dest.y += 9 * 64;
+							SDL_RenderCopy(renderer, dungeon_sheet.sheet, &door_src, &door_dest);
+
+							door_src = { 128, 128, 64, 128 };
+							door_dest = { 64, 5 * 64, 64, 128 };
+							SDL_RenderCopy(renderer, dungeon_sheet.sheet, &door_src, &door_dest);
+
+							door_src.x += 64;
+							door_dest.x += 13 * 64;
+							SDL_RenderCopy(renderer, dungeon_sheet.sheet, &door_src, &door_dest);
+						}
+						draw_Room_Layer(renderer, dungeon_map.walls[locale[MID]],
+							dungeon_map.src_sheet, dungeon_map.room_w, dungeon_map.room_h, camera.scale);
+					}
+
+					//draw collisions for debug
+					if (debug_toggle == 1)
+					{
+						draw_Room_Layer(renderer, dungeon_map.ground_collisions[locale[MID]], &collision_sheet, dungeon_map.room_w, dungeon_map.room_h, camera.scale);
+						draw_Room_Layer(renderer, dungeon_map.prop_collisions[locale[MID]], &collision_sheet, dungeon_map.room_w, dungeon_map.room_h, camera.scale);
+						draw_Room_Layer(renderer, dungeon_map.wall_collisions[locale[MID]], &collision_sheet, dungeon_map.room_w, dungeon_map.room_h, camera.scale);
+						draw_Entity_Collision(renderer, green, red, blue, col_box_w, col_box_h, p1, camera.scale);
+						for (int i = 0; i < max_enemies; ++i)
+						{
+							if (enemies[i].state != DEAD) draw_Entity_Collision(renderer, green, red, blue, col_box_w, col_box_h, enemies[i], camera.scale);
+						}
+					}
+				}
+				else
+				{
+					SDL_Rect backdrop_src = { 0 };
+					if (dungeon_map.subfloor_type[locale[MID]] == 0) backdrop_src = { curr_subfloor_frame * 64, 0, 64, 64 };
+					else if (dungeon_map.subfloor_type[locale[MID]] == 1) backdrop_src = { curr_subfloor_frame * 64, 64, 64, 64 };
+					else if (dungeon_map.subfloor_type[locale[MID]] == 2) backdrop_src = { 0, 128, 64, 64 };
+					else if (dungeon_map.subfloor_type[locale[MID]] == 3) backdrop_src = { 128, 128, 64, 64 };
+					else backdrop_src = { curr_subfloor_frame * 64, 192, 64, 64 };
+					SDL_Rect backdrop_dest = { 0 - (int)(camera.x * camera.scale) * dungeon_map.room_w, 0 - (int)(camera.y * camera.scale) * dungeon_map.room_h, 64, 64 };
+					for (int y = 0; y < dungeon_map.room_h; ++y)
+					{
+						for (int x = 0; x < dungeon_map.room_w; ++x)
+						{
+							SDL_RenderCopy(renderer, subfloor->sheet, &backdrop_src, &backdrop_dest);
+							backdrop_dest.x += 64;
+						}
+						backdrop_dest.x = 0 - (int)(camera.x * camera.scale) * dungeon_map.room_w;
+						backdrop_dest.y += 64;
+					}
+
+					backdrop_src = { 0 };
+					if (dungeon_map.subfloor_type[locale[direction]] == 0) backdrop_src = { curr_subfloor_frame * 64, 0, 64, 64 };
+					else if (dungeon_map.subfloor_type[locale[direction]] == 1) backdrop_src = { curr_subfloor_frame * 64, 64, 64, 64 };
+					else if (dungeon_map.subfloor_type[locale[direction]] == 2) backdrop_src = { 0, 128, 64, 64 };
+					else if (dungeon_map.subfloor_type[locale[direction]] == 3) backdrop_src = { 128, 128, 64, 64 };
+					else backdrop_src = { curr_subfloor_frame * 64, 192, 64, 64 };
+					int start_x = 0 - (int)(camera.x * camera.scale) * dungeon_map.room_w;
+					int start_y = 0 - (int)(camera.y * camera.scale) * dungeon_map.room_h;
+					if (direction == LEFT) start_x -= camera.scale * dungeon_map.room_w;
+					else if (direction == RIGHT) start_x += camera.scale * dungeon_map.room_w;
+					else if (direction == DOWN) start_y += camera.scale * dungeon_map.room_h;
+					else if (direction == UP) start_y -= camera.scale * dungeon_map.room_h;
+					backdrop_dest = { start_x, start_y, 64, 64 };
+					for (int y = 0; y < dungeon_map.room_h; ++y)
+					{
+						for (int x = 0; x < dungeon_map.room_w; ++x)
+						{
+							SDL_RenderCopy(renderer, subfloor->sheet, &backdrop_src, &backdrop_dest);
+							backdrop_dest.x += 64;
+						}
+						backdrop_dest.x = start_x;
+						backdrop_dest.y += 64;
+					}
+
+					draw_Rooms_Layers(renderer, dungeon_map.ground, locale[MID], direction,
+						dungeon_map.src_sheet, dungeon_map.room_w, dungeon_map.room_h, dungeon_map.map_w, &camera);
+					draw_Rooms_Layers(renderer, dungeon_map.props, locale[MID], direction,
+						prop_sheet, dungeon_map.room_w, dungeon_map.room_h, dungeon_map.map_w, &camera);
+					if (map_choice == 0)
+					{
+						draw_Rooms_Layers(renderer, dungeon_map.walls, locale[MID], direction,
+							dungeon_map.src_sheet, dungeon_map.room_w, dungeon_map.room_h, dungeon_map.map_w, &camera);
+					}
+					draw_Entity_Instance(renderer, p1, camera);
+					if (map_choice != 0)
+					{
+						draw_Rooms_Layers(renderer, dungeon_map.walls, locale[MID], direction,
+							dungeon_map.src_sheet, dungeon_map.room_w, dungeon_map.room_h, dungeon_map.map_w, &camera);
+					}
+					if (debug_toggle == 1)
+					{
+						draw_Rooms_Layers(renderer, dungeon_map.ground_collisions, locale[MID], direction,
+							&collision_sheet, dungeon_map.room_w, dungeon_map.room_h, dungeon_map.map_w, &camera);
+						draw_Rooms_Layers(renderer, dungeon_map.prop_collisions, locale[MID], direction,
+							&collision_sheet, dungeon_map.room_w, dungeon_map.room_h, dungeon_map.map_w, &camera);
+						draw_Rooms_Layers(renderer, dungeon_map.wall_collisions, locale[MID], direction,
+							&collision_sheet, dungeon_map.room_w, dungeon_map.room_h, dungeon_map.map_w, &camera);
+					}
+				}
+				//empty hp bar
+				SDL_Rect hud_src = { 64, 0, 64, 128 };
+				SDL_Rect hud_dest = { 0, 0, 64, 128 };
+				SDL_RenderCopy(renderer, hud_sheet, &hud_src, &hud_dest);
+				//fill with curr hp
+				hud_src.x = 0;
+				float hp_frac = (float)p1.curr_hp / (float)p1.key->max_hp;
+				hud_src.h = (int)((float)(128 - 32) * hp_frac);
+				hud_src.y = 128 - hud_src.h;
+				hud_dest.y = hud_src.y;
+				hud_dest.h = hud_src.h;
+				SDL_RenderCopy(renderer, hud_sheet, &hud_src, &hud_dest);
+				//heart
+				hud_src = { 128, 0, 64, 64 };
+				hud_dest = { 0, 3, 64, 64 };
+				SDL_RenderCopy(renderer, hud_sheet, &hud_src, &hud_dest);
+				//display money
+				hud_src = { 128, 64, 64, 64 };
+				hud_dest = { 64, 0, 64, 64 };
+				SDL_RenderCopy(renderer, hud_sheet, &hud_src, &hud_dest);
+				Text::draw_Int(renderer, player_money, 128, 16, 250, &font, 32);
+				SDL_RenderPresent(renderer);
 			}
-			else
+
+			if (gamestate == RESET)
 			{
-				SDL_Rect backdrop_src = { 0 };
-				if (dungeon_map.subfloor_type[locale[MID]] == 0) backdrop_src = { curr_subfloor_frame * 64, 0, 64, 64 };
-				else if (dungeon_map.subfloor_type[locale[MID]] == 1) backdrop_src = { curr_subfloor_frame * 64, 64, 64, 64 };
-				else if (dungeon_map.subfloor_type[locale[MID]] == 2) backdrop_src = { 0, 128, 64, 64 };
-				else backdrop_src = { 128, 128, 64, 64 };
-				SDL_Rect backdrop_dest = { 0 - (int)(camera.x * camera.scale) * dungeon_map.room_w, 0 - (int)(camera.y * camera.scale) * dungeon_map.room_h, 64, 64 };
-				for (int y = 0; y < dungeon_map.room_h; ++y)
-				{
-					for (int x = 0; x < dungeon_map.room_w; ++x)
-					{
-						SDL_RenderCopy(renderer, subfloor->sheet, &backdrop_src, &backdrop_dest);
-						backdrop_dest.x += 64;
-					}
-					backdrop_dest.x = 0 - (int)(camera.x * camera.scale) * dungeon_map.room_w;
-					backdrop_dest.y += 64;
-				}
+				//stop sounds
+				Mix_HaltChannel(-1);
+				Mix_HaltChannel(1);
 
-				backdrop_src = { 0 };
-				if (dungeon_map.subfloor_type[locale[direction]] == 0) backdrop_src = { curr_subfloor_frame * 64, 0, 64, 64 };
-				else if (dungeon_map.subfloor_type[locale[direction]] == 1) backdrop_src = { curr_subfloor_frame * 64, 64, 64, 64 };
-				else if (dungeon_map.subfloor_type[locale[direction]] == 2) backdrop_src = { 0, 128, 64, 64 };
-				else backdrop_src = { 128, 128, 64, 64 };
-				int start_x = 0 - (int)(camera.x * camera.scale) * dungeon_map.room_w;
-				int start_y = 0 - (int)(camera.y * camera.scale) * dungeon_map.room_h;
-				if (direction == LEFT) start_x -= camera.scale * dungeon_map.room_w;
-				else if (direction == RIGHT) start_x += camera.scale * dungeon_map.room_w;
-				else if (direction == DOWN) start_y += camera.scale * dungeon_map.room_h;
-				else if (direction == UP) start_y -= camera.scale * dungeon_map.room_h;
-				backdrop_dest = { start_x, start_y, 64, 64 };
-				for (int y = 0; y < dungeon_map.room_h; ++y)
-				{
-					for (int x = 0; x < dungeon_map.room_w; ++x)
-					{
-						SDL_RenderCopy(renderer, subfloor->sheet, &backdrop_src, &backdrop_dest);
-						backdrop_dest.x += 64;
-					}
-					backdrop_dest.x = start_x;
-					backdrop_dest.y += 64;
-				}
+				//reset enemies
+				n_enemies = 0;
+				for (int i = 0; i < max_enemies; ++i) enemies[i].state = DEAD;
+				//reset player
+				p1.state = IDLE;
+				p1.curr_hp = p1.key->max_hp;
+				p1.x = dungeon_map.room_w * 0.5f - 0.5f;
+				p1.y = dungeon_map.room_h * 0.5f - 0.5f;
+				player_money = 0;
 
-				draw_Rooms_Layers(renderer, dungeon_map.ground, locale[MID], direction,
-					dungeon_map.src_sheet, dungeon_map.room_w, dungeon_map.room_h, dungeon_map.map_w, &camera);
-				draw_Rooms_Layers(renderer, dungeon_map.props, locale[MID], direction,
-					prop_sheet, dungeon_map.room_w, dungeon_map.room_h, dungeon_map.map_w, &camera);
+				//reset map
+				terrain_key = NULL;
+				map_choice = rand() % 2;
 				if (map_choice == 0)
 				{
-					draw_Rooms_Layers(renderer, dungeon_map.walls, locale[MID], direction,
-						dungeon_map.src_sheet, dungeon_map.room_w, dungeon_map.room_h, dungeon_map.map_w, &camera);
+					dungeon_map.src_sheet = &beach_sheet;
+					prop_sheet = &beach_prop_sheet;
+					ground_enemy = &crab_key;
+					terrain_key = &beach_key;
+					ambient = beach_sound;
 				}
-				draw_Entity_Instance(renderer, p1, camera);
-				if (map_choice != 0)
+				if (map_choice == 1)
 				{
-					draw_Rooms_Layers(renderer, dungeon_map.walls, locale[MID], direction,
-						dungeon_map.src_sheet, dungeon_map.room_w, dungeon_map.room_h, dungeon_map.map_w, &camera);
+					dungeon_map.src_sheet = &dungeon_sheet;
+					terrain_key = &dungeon_key;
+					prop_sheet = &dungeon_prop_sheet;
+					ground_enemy = &blob_key;
+					ambient = cave_sound;
 				}
-				if (debug_toggle == 1)
-				{
-					draw_Rooms_Layers(renderer, dungeon_map.ground_collisions, locale[MID], direction,
-						&collision_sheet, dungeon_map.room_w, dungeon_map.room_h, dungeon_map.map_w, &camera);
-					draw_Rooms_Layers(renderer, dungeon_map.prop_collisions, locale[MID], direction,
-						&collision_sheet, dungeon_map.room_w, dungeon_map.room_h, dungeon_map.map_w, &camera);
-					draw_Rooms_Layers(renderer, dungeon_map.wall_collisions, locale[MID], direction,
-						&collision_sheet, dungeon_map.room_w, dungeon_map.room_h, dungeon_map.map_w, &camera);
-				}
+				locale[MID] = generate_Map(&dungeon_map, 3, 3, *terrain_key);
+				if (map_choice == 0) for (int i = 0; i < 9; ++i) dungeon_map.subfloor_type[i] = 4;
+				locale[LEFT] = locale[MID] - 1;
+				locale[RIGHT] = locale[MID] + 1;
+				locale[DOWN] = locale[MID] + dungeon_map.map_w;
+				locale[UP] = locale[MID] - dungeon_map.map_w;
+				++dungeon_map.visited[locale[MID]];
+
+				gamestate = MENU;
 			}
-			//empty hp bar
-			SDL_Rect hud_src = { 64, 0, 64, 128 };
-			SDL_Rect hud_dest = { 0, 0, 64, 128 };
-			SDL_RenderCopy(renderer, hud_sheet, &hud_src, &hud_dest);
-			//fill with curr hp
-			hud_src.x = 0;
-			float hp_frac = (float)p1.curr_hp / (float)p1.key->max_hp;
-			hud_src.h = (int)((float)(128 - 32) * hp_frac);
-			hud_src.y = 128 - hud_src.h;
-			hud_dest.y = hud_src.y;
-			hud_dest.h = hud_src.h;
-			SDL_RenderCopy(renderer, hud_sheet, &hud_src, &hud_dest);
-			//heart
-			hud_src = { 128, 0, 64, 64 };
-			hud_dest = { 0, 3, 64, 64 };
-			SDL_RenderCopy(renderer, hud_sheet, &hud_src, &hud_dest);
-			//display money
-			hud_src = { 128, 64, 64, 64 };
-			hud_dest = { 64, 0, 64, 64 };
-			SDL_RenderCopy(renderer, hud_sheet, &hud_src, &hud_dest);
-			Text::draw_Int(renderer, player_money, 128, 16, 250, &font, 32);
-			SDL_RenderPresent(renderer);
 		}
 	}
 }
