@@ -222,7 +222,7 @@ void load_Map_Key(Map_Key* key, int room_w, int room_h, int n_walls, int n_floor
 		load_CSV(key->floors[i].props, room_w, room_h, path);
 
 		key->floors[i].prop_collision = (int*)calloc(room_area, sizeof(int));
-		sprintf(path, "%s_Floors_%d_Props_Collision.csv", path_start, i);
+		sprintf(path, "%s_Floors_%d_Prop_Collision.csv", path_start, i);
 		load_CSV(key->floors[i].prop_collision, room_w, room_h, path);
 
 		int* spawn_layer = (int*)calloc(room_area, sizeof(int));
@@ -1409,7 +1409,7 @@ void check_Collision(Entity_Instance* e, int* wall_c, int* prop_c, int* floor_c,
 
 	int top_fall = 0;
 
-	float ex = e->x + (e->key->width * 0.5f) - 0.1;
+	float ex = e->x + (e->key->width * 0.5f) - 0.1f;
 	float ey = e->y + 0.4f;
 	tx = (int)ex;
 	ty = (int)ey;
@@ -1844,13 +1844,13 @@ int main(int argc, char** argv)
 	chicken_key.width = 1.0f;
 	chicken_key.height = 1.0f;
 	chicken_key.atk_w = 0.75f;
-	chicken_key.atk_h = 0.25f;
+	chicken_key.atk_h = 0.6f;
 
 	Entity_Instance p1 = { 0 };
 	p1.key = &chicken_key;
 	p1.x = 7.5f;
 	p1.y = 5.5f;
-	p1.key->speed = 0.1f;
+	p1.key->speed = 0.08f;
 	p1.direction = DOWN;
 	p1.state = IDLE;
 	p1.curr_hp = p1.key->max_hp;
@@ -1899,10 +1899,10 @@ int main(int argc, char** argv)
 	for (int i = 0; i < max_enemies; ++i) enemies[i].key = &blob_key;
 
 	Map_Key dungeon_key = { 0 };
-	load_Map_Key(&dungeon_key, 16, 12, 16, 16, "Assets/CSV/Hero_Dungeon");
+	load_Map_Key(&dungeon_key, 16, 12, 16, 16, "Assets/CSV/Final_Dungeon");
 
 	Map_Key beach_key = { 0 };
-	load_Map_Key(&beach_key, 16, 12, 16, 16, "Assets/CSV/Hero_Beach");
+	load_Map_Key(&beach_key, 16, 12, 16, 16, "Assets/CSV/Final_Beach");
 
 	//load Locale
 	Sheet dungeon_sheet = { 0 };
@@ -1910,6 +1910,9 @@ int main(int argc, char** argv)
 
 	Sheet beach_sheet = { 0 };
 	load_Sheet(&beach_sheet, camera.scale, camera.scale, renderer, "Assets/Images/Beach_Terrain.png");
+
+	Sheet animation_sheet = { 0 };
+	load_Sheet(&animation_sheet, camera.scale, camera.scale, renderer, "Assets/Images/Animation_Spritesheet.png");
 
 	Sheet subfloor_sheet = { 0 };
 	load_Sheet(&subfloor_sheet, camera.scale, camera.scale, renderer, "Assets/Images/Pitfall.png");
@@ -2399,19 +2402,19 @@ int main(int argc, char** argv)
 						{
 							SDL_Rect door_src = { 0, 0, 128, 64 };
 							SDL_Rect door_dest = { 7 * 64, 64, 128, 64 };
-							SDL_RenderCopy(renderer, dungeon_sheet.sheet, &door_src, &door_dest);
+							SDL_RenderCopy(renderer, animation_sheet.sheet, &door_src, &door_dest);
 
 							door_src.y += 64;
 							door_dest.y += 9 * 64;
-							SDL_RenderCopy(renderer, dungeon_sheet.sheet, &door_src, &door_dest);
+							SDL_RenderCopy(renderer, animation_sheet.sheet, &door_src, &door_dest);
 
-							door_src = { 128, 128, 64, 128 };
+							door_src = { 0, 128, 64, 128 };
 							door_dest = { 64, 5 * 64, 64, 128 };
-							SDL_RenderCopy(renderer, dungeon_sheet.sheet, &door_src, &door_dest);
+							SDL_RenderCopy(renderer, animation_sheet.sheet, &door_src, &door_dest);
 
-							door_src.x += 64;
+							door_src.y += 128;
 							door_dest.x += 13 * 64;
-							SDL_RenderCopy(renderer, dungeon_sheet.sheet, &door_src, &door_dest);
+							SDL_RenderCopy(renderer, animation_sheet.sheet, &door_src, &door_dest);
 						}
 						draw_Room_Layer(renderer, dungeon_map.walls[locale[MID]],
 							dungeon_map.src_sheet, dungeon_map.room_w, dungeon_map.room_h, camera.scale);

@@ -3,5 +3,5 @@ Walk Start: 3-6-9	Walk End: 5-8-11	Walk Rate: 7-7-7
 Attack Start: 24-36-48	Attack End: 30-42-54	Attack Rate: 6-6-6
 Damage Start: 60-64-68	Damage End: 63-67-71	Damage Rate: 12-12-12
 Death Start: 84-96-108	Death End: 90-102-114	Death Rate: 25-25-25
-Fall Start: 84-96-108	Fall End: 90-102-114	Fall Rate: 25-25-25
+Fall Start: 120-120-120	Fall End: 125-125-125	Fall Rate: 20-20-20
 
